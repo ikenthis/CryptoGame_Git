@@ -12,7 +12,8 @@
     "typecheck": "tsc -p tsconfig.json",
     "dev:server": "node apps/server/src/main.ts",
     "dev:web": "npm run dev -w apps/web",
-    "build:web": "npm run build -w apps/web"
+    "build:web": "npm run build -w apps/web",
+    "start": "npm run build:web && node apps/server/src/main.ts"
   },
   "engines": {
     "node": ">=22.18"

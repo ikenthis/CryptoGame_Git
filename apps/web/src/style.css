@@ -69,7 +69,11 @@ h3 { font-size: 14px; margin-top: 14px; }
 /* ---------- Razas ---------- */
 
 .races { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; margin-bottom: 12px; }
-@media (max-width: 640px) { .races { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@media (max-width: 640px) {
+  .races { display: flex; overflow-x: auto; gap: 6px; padding-bottom: 4px; scroll-snap-type: x mandatory; scrollbar-width: none; }
+  .race { flex: 0 0 auto; padding: 6px 10px; scroll-snap-align: start; }
+  .races .race small { display: none; }
+}
 .race {
   display: flex; gap: 8px; align-items: center; text-align: left;
   padding: 8px; border-radius: 10px; cursor: pointer; color: var(--text);
@@ -322,3 +326,10 @@ td.num, th.num { text-align: right; }
 .tut-actions { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
 .tut-hint { font: 700 12px var(--display); color: var(--gold); animation: hint-pulse 0.9s ease-in-out infinite alternate; }
 @keyframes hint-pulse { from { opacity: 0.55; } }
+
+/* ---------- Telegram Mini App ---------- */
+
+body.telegram header { padding-top: 10px; }
+body.telegram header h1 { font-size: 30px; }
+body.telegram header p { display: none; }
+body.telegram main { padding-top: 8px; }

@@ -8,6 +8,7 @@ import { artUrl, loadArt } from './art/assets.ts';
 import { RACE_EMBLEM } from './art/icons.ts';
 import { getSprite } from './art/sprites.ts';
 import { sound } from './audio/sound.ts';
+import { initTelegram, type TelegramWebApp } from './platform/telegram.ts';
 import { RARITY_COLORS } from './art/theme.ts';
 import { Scene, type Look } from './scene/scene.ts';
 import { cardElement } from './ui/card.ts';
@@ -24,6 +25,10 @@ let deck: CardPlay[] = [];
 let selected: UnitType = 'warrior';
 let battling = false;
 const SPEEDS = [1, 2, 4];
+/** Presente solo cuando el juego se abre como Mini App de Telegram. */
+let tg: TelegramWebApp | null = null;
+/** Sesión verificada por el servidor (hoy, vía Telegram). */
+let session: { token: string; playerId: string; name: string } | null = null;
 let speedIndex = 0;
 
 const scene = new Scene($<HTMLCanvasElement>('board'));
@@ -225,6 +230,7 @@ function refresh(): void {
   $('edit').hidden = !battling;
   $('speed').hidden = !battling;
   $('skip').hidden = !battling;
+  syncTelegramButtons();
   refreshScene();
 }
 
@@ -268,7 +274,11 @@ scene.hooks = {
     if (wrap) wrap.classList.add('out');
   },
   onFinish: () => finishBattle(),
-  onSfx: (name, intensity) => sound.play(name, intensity),
+  onSfx: (name, intensity) => {
+    sound.play(name, intensity);
+    if (name === 'heavy' || name === 'explosion' || name === 'legendary') tg?.HapticFeedback?.impactOccurred('heavy');
+    else if (name === 'hit') tg?.HapticFeedback?.impactOccurred('light');
+  },
 };
 
 let lastResult: BattleResult | null = null;
@@ -302,6 +312,7 @@ function finishBattle(): void {
   resultBox.hidden = false;
   sound.setMusic('menu');
   if (r.winner !== null) sound.play(r.winner === replaySide ? 'victory' : 'defeat');
+  tg?.HapticFeedback?.notificationOccurred(r.winner === replaySide ? 'success' : r.winner === null ? 'warning' : 'error');
   setStatus(r.winner === null ? 'Empate.' : `${replayLabels[r.winner]} gana ${why}.`, (tone || '') as '' | 'win' | 'loss');
 }
 
@@ -354,7 +365,9 @@ const playerInput = $<HTMLInputElement>('player');
 try { playerInput.value = localStorage.getItem('bastion.player') ?? ''; } catch { /* almacenamiento no disponible */ }
 
 async function api<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(path, { ...init, headers: { 'content-type': 'application/json' } });
+  const headers: Record<string, string> = { 'content-type': 'application/json' };
+  if (session) headers.authorization = `Bearer ${session.token}`;
+  const res = await fetch(path, { ...init, headers });
   const body = await res.json().catch(() => ({ error: `Error ${res.status}` }));
   if (!res.ok) throw new Error(body.error ?? `Error ${res.status}`);
   return body as T;
@@ -371,7 +384,7 @@ const escapeHtml = (s: string) => s.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt
 
 $('submit').onclick = async () => {
   const out = $('submit-status');
-  const playerId = playerInput.value.trim();
+  const playerId = session?.playerId ?? playerInput.value.trim();
   try { localStorage.setItem('bastion.player', playerId); } catch { /* opcional */ }
   try {
     const list = await api<TournamentView[]>('/api/tournaments');
@@ -514,6 +527,40 @@ $('tutorial-open').onclick = () => {
   if (battling) stopBattle();
   tutorial.start();
 };
+
+// ---------- Telegram ----------
+
+function syncTelegramButtons(): void {
+  if (!tg) return;
+  if (battling) {
+    tg.MainButton.hide();
+    tg.BackButton.show();
+  } else {
+    tg.BackButton.hide();
+    if (placements.length > 0) tg.MainButton.show();
+    else tg.MainButton.hide();
+  }
+}
+
+initTelegram().then(async (app) => {
+  if (!app) return;
+  tg = app;
+  document.body.classList.add('telegram');
+  app.MainButton.setText('⚔ ¡A la batalla!');
+  app.MainButton.onClick(() => $('simulate').click());
+  app.BackButton.onClick(() => stopBattle());
+  syncTelegramButtons();
+  try {
+    session = await api<{ token: string; playerId: string; name: string }>('/api/auth/telegram', {
+      method: 'POST', body: JSON.stringify({ initData: app.initData }),
+    });
+    playerInput.value = session.name;
+    playerInput.readOnly = true;
+    $('submit-status').textContent = `Conectado con Telegram como ${session.name}.`;
+  } catch (err) {
+    $('submit-status').textContent = `No se pudo iniciar sesión con Telegram: ${(err as Error).message}`;
+  }
+});
 
 renderAll();
 if (!tutorialSeen()) tutorial.start();

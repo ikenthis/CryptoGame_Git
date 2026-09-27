@@ -4,6 +4,8 @@ import {
   ARMORS, BOARD_HEIGHT, BOARD_WIDTH, BUDGET, CARDS, CARD_TURN_MAX, DEPLOY_COLUMNS, ENERGY, MAX_CARDS, MAX_FEE_BPS,
   MAX_TURNS, MAX_UNITS, PRESET_ARMIES, RACES, UNITS, simulate, validateArmy, type Army,
 } from '@bastion/engine';
+import { signSession, verifySession, verifyTelegramInitData, type Session } from './auth.ts';
+import { serveStatic } from './static.ts';
 import { StoreError, commitmentFor, poolOf, type Tournament, type TournamentStore } from './store.ts';
 
 export interface AppOptions {
@@ -18,6 +20,14 @@ export interface AppOptions {
   verifyEntryPayment?: (t: Tournament, playerId: string, commitment: string, paymentTx: unknown) => Promise<boolean>;
   /** Comprueba que el jugador posee las cartas que usa (torneos con cardPool 'owned'). */
   verifyCardOwnership?: (playerId: string, army: Army) => Promise<boolean>;
+  /** Token del bot de Telegram para validar el initData de la Mini App. */
+  telegramBotToken?: string;
+  /** Secreto para firmar las sesiones de jugador. */
+  sessionSecret?: string;
+  /** Si es true, las inscripciones exigen sesión (no se aceptan nombres anónimos). */
+  requireAuth?: boolean;
+  /** Carpeta del cliente compilado para servirlo junto a la API. */
+  staticDir?: string;
 }
 
 const MAX_BODY_BYTES = 16 * 1024;
@@ -25,6 +35,8 @@ const MAX_BODY_BYTES = 16 * 1024;
 const PLAYER_ID = /^[A-Za-z0-9_-]{3,42}$/;
 const TOURNAMENT_ID = /^[a-z0-9-]{3,48}$/;
 const SALT = /^[0-9a-f]{32}$/;
+/** Prefijo reservado a identidades verificadas: un jugador anónimo no puede usarlo. */
+const VERIFIED_PREFIX = 'tg-';
 
 export function createApp(options: AppOptions): Server {
   const { store } = options;
@@ -32,6 +44,19 @@ export function createApp(options: AppOptions): Server {
 
   const routes: Array<[string, RegExp, (req: IncomingMessage, params: string[], url: URL) => Promise<unknown>]> = [
     ['GET', /^\/api\/health$/, async () => ({ ok: true })],
+
+    // Inicio de sesión desde la Mini App de Telegram.
+    ['POST', /^\/api\/auth\/telegram$/, async (req) => {
+      if (!options.telegramBotToken || !options.sessionSecret) fail(503, 'El inicio de sesión con Telegram no está configurado.');
+      const body = await readJson(req) as { initData?: unknown };
+      const user = verifyTelegramInitData(String(body.initData ?? ''), options.telegramBotToken, now());
+      if (!user) fail(401, 'Datos de Telegram inválidos o caducados.');
+      const playerId = `${VERIFIED_PREFIX}${user.id}`;
+      const name = (user.username ?? [user.first_name, user.last_name].filter(Boolean).join(' ')) || playerId;
+      return { playerId, name, token: signSession(playerId, name, options.sessionSecret, now()) };
+    }],
+
+    ['GET', /^\/api\/me$/, async (req) => sessionFrom(req) ?? fail(401, 'Sin sesión.')],
 
     ['GET', /^\/api\/config$/, async () => ({
       board: { width: BOARD_WIDTH, height: BOARD_HEIGHT, deployColumns: DEPLOY_COLUMNS },
@@ -75,8 +100,12 @@ export function createApp(options: AppOptions): Server {
 
     ['POST', /^\/api\/tournaments\/([^/]+)\/entries$/, async (req, [id]) => {
       const body = await readJson(req) as { playerId?: unknown; army?: unknown; salt?: unknown; paymentTx?: unknown };
-      const playerId = String(body.playerId ?? '');
+      // Con sesión, la identidad sale del token y no del cuerpo de la petición.
+      const session = sessionFrom(req);
+      if (!session && options.requireAuth) fail(401, 'Inicia sesión para inscribirte.');
+      const playerId = session?.sub ?? String(body.playerId ?? '');
       if (!PLAYER_ID.test(playerId)) fail(400, 'playerId: 3-42 caracteres alfanuméricos, "-" o "_".');
+      if (!session && playerId.startsWith(VERIFIED_PREFIX)) fail(400, `Los nombres que empiezan por "${VERIFIED_PREFIX}" están reservados.`);
       const army = requireArmy(body.army);
       const t = store.get(id);
       if (t.cardPool === 'owned' && (army.cards ?? []).length > 0) {
@@ -114,6 +143,12 @@ export function createApp(options: AppOptions): Server {
     }],
   ];
 
+  function sessionFrom(req: IncomingMessage): Session | null {
+    const header = String(req.headers.authorization ?? '');
+    if (!header.startsWith('Bearer ') || !options.sessionSecret) return null;
+    return verifySession(header.slice(7), options.sessionSecret, now());
+  }
+
   return createServer(async (req, res) => {
     try {
       const url = new URL(req.url ?? '/', 'http://localhost');
@@ -123,6 +158,7 @@ export function createApp(options: AppOptions): Server {
         send(res, 200, await handler(req, match.slice(1).map(decodeURIComponent), url));
         return;
       }
+      if (!url.pathname.startsWith('/api/') && options.staticDir && await serveStatic(options.staticDir, req, res, url.pathname)) return;
       send(res, 404, { error: 'Ruta no encontrada.' });
     } catch (err) {
       if (err instanceof StoreError) send(res, err.status, { error: err.message });

@@ -1,5 +1,6 @@
 import { createHash, randomBytes } from 'node:crypto';
-import { readFileSync, writeFileSync, renameSync, existsSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
+import { dirname } from 'node:path';
 import {
   canonicalArmy, computePayouts, runTournament, type Army, type PayoutPlan, type Standing,
 } from '@bastion/engine';
@@ -60,6 +61,7 @@ export class TournamentStore {
 
   constructor(dataFile?: string) {
     this.dataFile = dataFile;
+    if (dataFile) mkdirSync(dirname(dataFile), { recursive: true });
     if (dataFile && existsSync(dataFile)) {
       for (const t of JSON.parse(readFileSync(dataFile, 'utf8')) as Tournament[]) this.tournaments.set(t.id, t);
     }

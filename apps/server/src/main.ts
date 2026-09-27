@@ -1,4 +1,6 @@
 import { randomBytes } from 'node:crypto';
+import { existsSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { createApp } from './app.ts';
 import { TournamentStore } from './store.ts';
 
@@ -30,4 +32,19 @@ function tick(): void {
 tick();
 setInterval(tick, 30_000);
 
-createApp({ store, adminToken }).listen(port, () => console.log(`Bastión API en http://localhost:${port}`));
+const sessionSecret = process.env.SESSION_SECRET ?? randomBytes(32).toString('hex');
+if (!process.env.SESSION_SECRET) console.log('SESSION_SECRET no definido: las sesiones caducarán al reiniciar el servidor.');
+const webDist = process.env.WEB_DIST ?? fileURLToPath(new URL('../../web/dist', import.meta.url));
+
+createApp({
+  store,
+  adminToken,
+  sessionSecret,
+  telegramBotToken: process.env.TELEGRAM_BOT_TOKEN,
+  requireAuth: process.env.REQUIRE_AUTH === '1',
+  staticDir: existsSync(webDist) ? webDist : undefined,
+}).listen(port, () => {
+  console.log(`Bastión API en http://localhost:${port}`);
+  if (existsSync(webDist)) console.log(`Sirviendo el cliente compilado desde ${webDist}`);
+  if (!process.env.TELEGRAM_BOT_TOKEN) console.log('TELEGRAM_BOT_TOKEN no definido: el inicio de sesión con Telegram está desactivado.');
+});

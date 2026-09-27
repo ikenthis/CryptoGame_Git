@@ -271,8 +271,8 @@ integración con wallets embebidas).
 | Fase | Contenido | Criterio para avanzar |
 |---|---|---|
 | 0. Prototipo (hecho) | Motor con razas y cartas, API, cliente web con gráficos, contratos con tests | — |
-| 0.5 Arte final | Ilustradores para cartas y sprites animados por raza (la caja de 100×100 y `getSprite()` ya están preparadas para cambiarlos), música y sonido | Test con jugadores: «¿se ve épico?» |
-| 1. MVP gratuito (4–6 semanas) | Telegram Mini App, cuentas, arena diaria patrocinada, pagos manuales, desafío diario | Retención D1 > 35% y D7 > 12% **sin** premios |
+| 0.5 Arte, sonido y onboarding (hecho en parte) | Ilustraciones con IA (`npm run art`), música y efectos sintetizados, tutorial guiado. Pendiente: sprites animados por un artista (`getSprite()` y la caja de 100×100 ya permiten cambiarlos) | Test con jugadores: «¿se ve épico?» |
+| 1. MVP gratuito (4–6 semanas) | Telegram Mini App con login verificado (hecho), arena diaria patrocinada, pagos manuales, desafío diario | Retención D1 > 35% y D7 > 12% **sin** premios |
 | 2. Confianza | Postgres, verificación de identidad, panel de pagos públicos, auditoría del contrato | Auditoría sin hallazgos críticos |
 | 3. Torneos de pago | Escrow en Base, geobloqueo, KYC para retiros | Aprobación legal por jurisdicción |
 | 4. Crecimiento | Recompensas en objetos on-chain, pase de temporada, clanes, ligas, patrocinadores, más razas | Ingresos ≥ coste de premios gratuitos |
@@ -285,3 +285,12 @@ integración con wallets embebidas).
 - Coste de premios gratuitos frente a ingresos (anuncios, patrocinio, cosméticos).
 - Reportes de trampas o multicuentas por cada 1.000 jugadores.
 - Tiempo desde que se abre la app hasta la primera partida (objetivo: < 15 s).
+- Porcentaje que completa el tutorial y en qué paso se abandona.
+
+## 11. Telegram
+
+Telegram es el canal de adquisición principal (ver [TELEGRAM.md](TELEGRAM.md)).
+Sus normas para Mini Apps exigen **Telegram Stars** para bienes digitales y
+**TON** para funciones de blockchain. Plan: en Telegram, juego gratuito con
+premios patrocinados; torneos de pago y mercado de objetos en la web, hasta
+decidir si merece la pena portar los contratos a TON.

@@ -7,15 +7,20 @@ legendarias) y la batalla se resuelve sola de forma **determinista**: sin azar,
 auditable y sin puntuaciones que falsificar. Las **armaduras** son cosméticas y,
 como las cartas, se pueden vender como objetos del juego (ERC-1155).
 
-Diseño completo, economía, aspectos legales y hoja de ruta: [docs/GDD.md](docs/GDD.md).
+Incluye música y efectos de sonido sintetizados, un tutorial guiado de la
+primera batalla y funciona como **Mini App de Telegram**.
+
+- Diseño, economía, aspectos legales y hoja de ruta: [docs/GDD.md](docs/GDD.md)
+- Publicar en Telegram: [docs/TELEGRAM.md](docs/TELEGRAM.md)
 
 ## Estructura
 
 | Carpeta | Qué es |
 |---|---|
 | `packages/engine` | Motor en TypeScript: reglas, razas, cartas, cosméticos, simulación, torneo todos contra todos y reparto de premios |
-| `apps/server` | API HTTP (Node sin framework): torneos con ejércitos ocultos, cierre, clasificación y repeticiones |
-| `apps/web` | Cliente web (Vite + canvas): sprites procedurales por raza y armadura, efectos de batalla, cartas, armería y torneos |
+| `apps/server` | API HTTP (Node sin framework): torneos con ejércitos ocultos, cierre, clasificación, repeticiones, login de Telegram y servidor del cliente compilado |
+| `apps/web` | Cliente web (Vite + canvas): sprites procedurales, efectos de batalla, sonido, tutorial, cartas, armería, torneos e integración con Telegram |
+| `tools/art` | Generador de ilustraciones con IA (cartas, retratos de raza e imagen principal) |
 | `contracts` | `TournamentEscrow.sol` (escrow de entradas USDC) y `BastionItems.sol` (cartas y armaduras ERC-1155 con suministro limitado y regalías), con Foundry |
 
 ## Arrancar en local
@@ -31,6 +36,26 @@ npm run dev:web                      # cliente en http://localhost:5173
 Galería de sprites para arte: http://localhost:5173/galeria.html
 (`?mode=armors&type=knight` muestra todas las armaduras de una unidad).
 
+Producción (API y cliente en un solo servidor): `cp .env.example .env`, rellenar
+y `npm run build:web && node --env-file=.env apps/server/src/main.ts`.
+
+## Ilustraciones con IA
+
+El juego trae arte vectorial propio y usa ilustraciones generadas cuando existen
+(`apps/web/public/art/manifest.json`). Para generarlas con tu clave:
+
+```bash
+npm run art -- --dry-run                               # ver prompts y coste estimado
+OPENAI_API_KEY=sk-... npm run art                      # gpt-image-1
+REPLICATE_API_TOKEN=r8_... npm run art -- --provider replicate   # Flux 1.1 Pro
+npm run art -- --only cards/meteor,races --force       # regenerar algunas
+```
+
+Son 22 imágenes (16 cartas, 5 retratos de raza y la imagen principal), unos
+4–5 USD con gpt-image-1 en calidad alta. Revisa las condiciones de uso del
+proveedor antes de vender objetos con ese arte y deja claro que es arte generado
+con IA.
+
 Crear y cerrar un torneo a mano:
 
 ```bash
@@ -45,7 +70,7 @@ Los importes van en unidades mínimas de USDC (1 USDC = 1.000.000).
 ## Tests
 
 ```bash
-npm test                 # motor + API (node:test)
+npm test                 # motor, API, login de Telegram y generador de arte (node:test)
 npm run typecheck
 node packages/engine/scripts/balance.ts   # informe de balance
 cd contracts && forge test                # contratos (usa OpenZeppelin de node_modules)
@@ -55,7 +80,7 @@ cd contracts && forge test                # contratos (usa OpenZeppelin de node_
 
 Es un prototipo (fase 0). Antes de manejar dinero real faltan:
 
-- identidad real de jugadores (login de Telegram o wallet embebida);
+- wallet embebida para la web (el login de Telegram ya está hecho);
 - base de datos en vez de memoria y archivo JSON;
 - verificador de pagos on-chain (`verifyEntryPayment`);
 - auditoría del contrato;
