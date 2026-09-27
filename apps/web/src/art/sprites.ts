@@ -1,4 +1,5 @@
 import { BOSSES, COMMANDERS, type ArmorId, type Race, type Special, type UnitType } from '@gentium/engine';
+import { unitArt } from './assets.ts';
 import { ARMOR_ART, RACE_ART, type ArmorArt, type RaceArt } from './theme.ts';
 
 // Sprites procedurales: cada unidad se dibuja con vectores según su raza y su
@@ -40,7 +41,9 @@ export function getSprite(type: UnitType, race: Race, armor: ArmorId, facing: 1 
   c.lineJoin = 'round';
   c.lineCap = 'round';
   const p: Painter = { c, race, r: RACE_ART[race], a: ARMOR_ART[armor] };
-  if (type === 'commander' && specialId in COMMANDERS) drawCommander(p, specialId as keyof typeof COMMANDERS);
+  const art = type === 'boss' || type === 'golem' ? null : unitArt(type === 'commander' ? `units/commander-${specialId}` : `units/${race}-${type}`);
+  if (art) drawIllustrated(p, art, type === 'commander');
+  else if (type === 'commander' && specialId in COMMANDERS) drawCommander(p, specialId as keyof typeof COMMANDERS);
   else if (type === 'boss' && specialId in BOSSES) (BOSSES[specialId as keyof typeof BOSSES].look === 'dragon' ? drawDragon : drawColossus)(p);
   else DRAW[type](p);
   if (white) {
@@ -51,6 +54,24 @@ export function getSprite(type: UnitType, race: Race, armor: ArmorId, facing: 1 
   }
   cache.set(key, canvas);
   return canvas;
+}
+
+/** Sprite ilustrado: cabe en la caja con los pies en (50, 92); las armaduras mágicas añaden su resplandor. */
+function drawIllustrated(p: Painter, art: HTMLCanvasElement, big: boolean): void {
+  const maxH = big ? 90 : 82, maxW = 92;
+  const k = Math.min(maxH / art.height, maxW / art.width);
+  const w = art.width * k, h = art.height * k;
+  if (p.a.glow) {
+    p.c.shadowColor = p.a.glow;
+    p.c.shadowBlur = 10;
+  }
+  p.c.drawImage(art, 50 - w / 2, 92 - h, w, h);
+  p.c.shadowBlur = 0;
+}
+
+/** Vacía la caché (tras cargar las ilustraciones, para que se usen). */
+export function clearSprites(): void {
+  cache.clear();
 }
 
 // ---------- Primitivas ----------

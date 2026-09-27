@@ -62,16 +62,21 @@ El juego trae arte vectorial propio y usa ilustraciones generadas cuando existen
 (`apps/web/public/art/manifest.json`). Para generarlas con tu clave:
 
 ```bash
+npm run art -- --only units                            # sprites del tablero GRATIS (Pollinations, sin clave)
 npm run art -- --dry-run                               # ver prompts y coste estimado
 OPENAI_API_KEY=sk-... npm run art                      # gpt-image-1
 REPLICATE_API_TOKEN=r8_... npm run art -- --provider replicate   # Flux 1.1 Pro
 npm run art -- --only cards/meteor,races --force       # regenerar algunas
 ```
 
-Son 22 imágenes (16 cartas, 5 retratos de raza y la imagen principal), unos
-4–5 USD con gpt-image-1 en calidad alta. Revisa las condiciones de uso del
-proveedor antes de vender objetos con ese arte y deja claro que es arte generado
-con IA.
+Los **sprites del tablero** (5 razas × 6 tropas + 10 comandantes) siguen el
+estilo de [docs/art-reference.webp](docs/art-reference.webp): 2D pintado, figura
+entera sobre fondo liso. El juego recorta el fondo al cargarlos y, si falta
+alguno, dibuja la figura vectorial. Todas las imágenes se reducen y se guardan en
+WebP (sprites a 256 px, unos 15–30 KB); `--keep-size` lo desactiva.
+Con gpt-image-1 cuestan unos 0,20 USD cada una; con Pollinations, nada.
+Revisa las condiciones de uso del proveedor antes de vender objetos con ese arte
+y deja claro que es arte generado con IA.
 
 Crear y cerrar un torneo a mano:
 

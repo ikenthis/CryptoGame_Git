@@ -5,8 +5,8 @@ import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, before, describe, it } from 'node:test';
-import { CARD_IDS, RACE_IDS } from '@gentium/engine';
-import { generateAll, openaiProvider, replicateProvider } from './generate.ts';
+import { CARD_IDS, COMMANDER_IDS, RACE_IDS, UNIT_TYPES } from '@gentium/engine';
+import { generateAll, openaiProvider, pollinationsProvider, replicateProvider, sharpOptimizer } from './generate.ts';
 import { ART_JOBS } from './prompts.ts';
 
 const PNG = Buffer.from('fake-image-bytes');
@@ -34,6 +34,10 @@ const server = createServer(async (req, res) => {
   if (req.url?.startsWith('/v1/models/')) {
     return res.end(JSON.stringify({ status: 'processing', urls: { get: `${base}/v1/predictions/1` } }));
   }
+  if (req.url?.startsWith('/prompt/')) {
+    res.setHeader('content-type', 'image/jpeg');
+    return res.end(PNG);
+  }
   if (req.url === '/v1/predictions/1') return res.end(JSON.stringify({ status: 'succeeded', output: [`${base}/files/out.webp`] }));
   if (req.url === '/files/out.webp') {
     res.setHeader('content-type', 'image/webp');
@@ -56,6 +60,15 @@ describe('prompts de arte', () => {
     for (const r of RACE_IDS) assert.ok(ids.has(`races/${r}`), r);
     assert.ok(ids.has('scenes/keyart'));
     for (const j of ART_JOBS) assert.match(j.prompt, /no text/i);
+  });
+
+  it('incluye un sprite de tablero por raza y tropa y uno por comandante, sobre fondo liso', () => {
+    const sprites = ART_JOBS.filter((j) => j.transparent);
+    const troops = UNIT_TYPES.filter((t) => t !== 'golem' && t !== 'commander' && t !== 'boss');
+    assert.equal(sprites.length, RACE_IDS.length * troops.length + COMMANDER_IDS.length);
+    assert.ok(sprites.some((j) => j.id === 'units/dwarf-guardian'));
+    assert.ok(sprites.some((j) => j.id === 'units/commander-seraphine'));
+    for (const j of sprites) assert.match(j.prompt, /white background/);
   });
 });
 
@@ -108,5 +121,32 @@ describe('generateAll', () => {
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
+  });
+
+  it('genera gratis con Pollinations y semilla estable por ilustración', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'art-'));
+    try {
+      const jobs = ART_JOBS.filter((j) => j.id === 'units/elf-archer');
+      const report = await generateAll({ provider: pollinationsProvider(base), outDir: dir, jobs, log: () => {} });
+      assert.deepEqual(report.generated, ['units/elf-archer']);
+      const call = requests.findLast((r) => r.url?.startsWith('/prompt/'))!;
+      const url = new URL(call.url, base);
+      assert.match(decodeURIComponent(url.pathname), /elf of Sylvaran/);
+      assert.equal(url.searchParams.get('width'), '1024');
+      assert.equal(url.searchParams.get('nologo'), 'true');
+      assert.ok(url.searchParams.get('seed'));
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('reduce los sprites a 256 px en WebP', async () => {
+    const { default: sharp } = await import('sharp');
+    const big = await sharp({ create: { width: 1024, height: 1024, channels: 3, background: '#ffffff' } }).png().toBuffer();
+    const optimize = await sharpOptimizer();
+    const out = await optimize(big, { id: 'units/x', size: '1024x1024', prompt: '', transparent: true });
+    const meta = await sharp(out).metadata();
+    assert.equal(meta.format, 'webp');
+    assert.equal(meta.width, 256);
   });
 });

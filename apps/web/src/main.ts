@@ -9,7 +9,7 @@ import {
 } from '@gentium/engine';
 import { artUrl, loadArt } from './art/assets.ts';
 import { RACE_EMBLEM } from './art/icons.ts';
-import { getSprite } from './art/sprites.ts';
+import { clearSprites, getSprite } from './art/sprites.ts';
 import { RARITY_COLORS } from './art/theme.ts';
 import { sound } from './audio/sound.ts';
 import { initTelegram, launchedFromTelegram, type TelegramWebApp } from './platform/telegram.ts';
@@ -839,5 +839,7 @@ if (!tutorialSeen()) tutorial.start();
 loadArt().then(() => {
   const keyart = artUrl('scenes/keyart');
   if (keyart) document.body.style.setProperty('--keyart', `url("${keyart}")`);
+  clearSprites();
   renderAll();
+  refreshScene();
 });

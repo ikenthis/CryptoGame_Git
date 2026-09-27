@@ -1,4 +1,4 @@
-import { BOSSES, CARDS, COMMANDERS, RACE_IDS, type CardId, type Race, type Rarity } from '@gentium/engine';
+import { BOSSES, CARDS, COMMANDERS, RACE_IDS, UNIT_TYPES, type CardId, type Race, type Rarity, type UnitType } from '@gentium/engine';
 
 // Dirección de arte para generar ilustraciones con IA. Todas comparten el mismo
 // estilo para que la colección se vea coherente. Los prompts van en inglés
@@ -11,6 +11,8 @@ export interface ArtJob {
   id: string;
   size: ArtSize;
   prompt: string;
+  /** Sprite de tablero: figura suelta sobre fondo liso (o transparente si el proveedor lo permite). */
+  transparent?: boolean;
 }
 
 export const ART_STYLE = [
@@ -20,6 +22,36 @@ export const ART_STYLE = [
   'centered composition with breathing room at the edges.',
   'Absolutely no text, letters, numbers, logos, watermarks, borders or card frames.',
 ].join(' ');
+
+/**
+ * Sprites del tablero, en el estilo de la ilustración de referencia
+ * (docs/art-reference.webp): 2D pintado a mano, fantasía oscura, contornos marcados.
+ */
+export const SPRITE_STYLE = [
+  '2D hand-painted dark-fantasy game character sprite, in the style of a premium mobile strategy game.',
+  'Full body, standing heroic pose, three-quarter view facing right, whole figure visible from head to feet, centered,',
+  'bold clean outlines, rich painterly shading, ornate detailed armor, strong rim light.',
+  'Isolated on a plain flat pure white background, no ground, no shadow, no scenery, no other characters.',
+  'Absolutely no text, letters, logos, watermarks or frames.',
+].join(' ');
+
+/** Aspecto de cada raza sin escenario (para sprites sobre fondo liso). */
+const SPRITE_RACE: Record<Race, string> = {
+  human: 'a human of the Kingdom of Aurelia in polished steel and gold plate armor with a royal blue tabard and a golden sun emblem',
+  elf: 'an elf of Sylvaran with pointed ears and long pale hair, graceful silver and emerald leaf-shaped armor, violet magical accents',
+  orc: 'a green-skinned tusked orc of the Ash Clans in brutal blackened iron armor with bone horns and crimson war paint',
+  undead: 'an undead skeleton of the Shadow Legion with glowing green-cyan soul fire eyes, tattered purple cloth and a spiked crown',
+  dwarf: 'a stocky dwarf of Durnhal with a huge braided red beard in rune-etched bronze and orange armor with glowing rune lines',
+};
+
+const UNIT_LOOK: Record<Exclude<UnitType, 'golem' | 'commander' | 'boss'>, string> = {
+  warrior: 'a front-line foot soldier with a sword and a round shield',
+  archer: 'an archer drawing a longbow, quiver on the back',
+  knight: 'a heavy armored knight with a lance and a kite shield, on foot',
+  guardian: 'a massive shield-bearer with a tower shield and a war hammer',
+  mage: 'a battle mage holding a glowing staff, arcane energy swirling in the hand',
+  healer: 'a priestly healer with a holy staff and a softly glowing light in the hand',
+};
 
 const RARITY_MOOD: Record<Rarity, string> = {
   common: 'Grounded, gritty and believable, a moment from a real battle.',
@@ -87,6 +119,18 @@ export const ART_JOBS: ArtJob[] = [
     id: `commanders/${c.id}`,
     size: '1024x1024',
     prompt: `${ART_STYLE} Heroic portrait of ${c.name}, ${c.title}, a legendary commander of ${RACE_LOOK[c.race]}. ${c.lore} Bust framed from the chest up, commanding presence, ornate armor, dark vignette background. ${RARITY_MOOD[c.rarity]}`,
+  })),
+  ...RACE_IDS.flatMap((race) => UNIT_TYPES.filter((t): t is keyof typeof UNIT_LOOK => t in UNIT_LOOK).map((type): ArtJob => ({
+    id: `units/${race}-${type}`,
+    size: '1024x1024',
+    transparent: true,
+    prompt: `${SPRITE_STYLE} The character is ${UNIT_LOOK[type]}: ${SPRITE_RACE[race]}.`,
+  }))),
+  ...Object.values(COMMANDERS).map((c): ArtJob => ({
+    id: `units/commander-${c.id}`,
+    size: '1024x1024',
+    transparent: true,
+    prompt: `${SPRITE_STYLE} The character is ${c.name}, ${c.title}, a commander: ${SPRITE_RACE[c.race]}, with a flowing cape and a distinctive crown or helm that marks a leader, more ornate than a common soldier.`,
   })),
   ...Object.values(BOSSES).map((b): ArtJob => ({
     id: `bosses/${b.id}`,

@@ -3,9 +3,10 @@
 // si no, su arte vectorial.
 //
 // Uso:
+//   node tools/art/generate.ts --provider pollinations   (gratis y sin clave; Flux vía Pollinations)
 //   OPENAI_API_KEY=...        node tools/art/generate.ts                  (gpt-image-1)
 //   REPLICATE_API_TOKEN=...   node tools/art/generate.ts --provider replicate   (Flux)
-// Opciones: --only cards/meteor,races   --force   --dry-run
+// Opciones: --only units,cards/meteor   --force   --dry-run   --keep-size (no reducir)
 import { existsSync } from 'node:fs';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
@@ -24,7 +25,10 @@ export function openaiProvider(apiKey: string, baseUrl = 'https://api.openai.com
       const res = await fetch(`${baseUrl}/images/generations`, {
         method: 'POST',
         headers: { authorization: `Bearer ${apiKey}`, 'content-type': 'application/json' },
-        body: JSON.stringify({ model, prompt: job.prompt, size: job.size, quality: 'high', output_format: 'webp', n: 1 }),
+        body: JSON.stringify({
+          model, prompt: job.prompt, size: job.size, quality: 'high', output_format: 'webp', n: 1,
+          ...(job.transparent ? { background: 'transparent' } : {}),
+        }),
       });
       if (!res.ok) throw new Error(`OpenAI ${res.status}: ${(await res.text()).slice(0, 300)}`);
       const body = await res.json() as { data?: Array<{ b64_json?: string; url?: string }> };
@@ -62,12 +66,30 @@ export function replicateProvider(apiToken: string, baseUrl = 'https://api.repli
   };
 }
 
+/**
+ * Pollinations: gratuito y sin clave (modelo Flux). Sin fondo transparente: los
+ * sprites se piden sobre blanco y el juego recorta el fondo al cargarlos.
+ */
+export function pollinationsProvider(baseUrl = 'https://image.pollinations.ai', model = 'flux'): Provider {
+  return {
+    name: `pollinations:${model}`,
+    async generate(job) {
+      const [width, height] = job.size.split('x');
+      const seed = [...job.id].reduce((h, ch) => (h * 31 + ch.charCodeAt(0)) >>> 0, 7);
+      const query = new URLSearchParams({ width, height, model, seed: String(seed), nologo: 'true', enhance: 'false' });
+      return download(`${baseUrl}/prompt/${encodeURIComponent(job.prompt)}?${query}`);
+    },
+  };
+}
+
 export interface GenerateOptions {
   provider: Provider;
   outDir: string;
   jobs?: ArtJob[];
   force?: boolean;
   concurrency?: number;
+  /** Posproceso de cada imagen (p. ej. reducir tamaño y pasar a WebP). */
+  optimize?: (image: Buffer, job: ArtJob) => Promise<Buffer>;
   /** Espera base entre reintentos (se duplica en cada intento). */
   retryBaseMs?: number;
   log?: (line: string) => void;
@@ -81,7 +103,7 @@ export interface GenerateReport {
 
 /** Genera las ilustraciones que falten (o todas con `force`) y mantiene el manifest al día. */
 export async function generateAll(options: GenerateOptions): Promise<GenerateReport> {
-  const { provider, outDir, jobs = ART_JOBS, force = false, concurrency = 3, retryBaseMs = 1000, log = console.log } = options;
+  const { provider, outDir, jobs = ART_JOBS, force = false, concurrency = 3, retryBaseMs = 1000, log = console.log, optimize } = options;
   const manifestPath = join(outDir, 'manifest.json');
   const manifest: Record<string, string> = existsSync(manifestPath) ? JSON.parse(await readFile(manifestPath, 'utf8')) : {};
   const report: GenerateReport = { generated: [], skipped: [], failed: [] };
@@ -98,7 +120,8 @@ export async function generateAll(options: GenerateOptions): Promise<GenerateRep
         continue;
       }
       try {
-        const image = await retry(() => provider.generate(job), 3, retryBaseMs);
+        const raw = await retry(() => provider.generate(job), 3, retryBaseMs);
+        const image = optimize ? await optimize(raw, job) : raw;
         await mkdir(dirname(path), { recursive: true });
         await writeFile(path, image);
         manifest[job.id] = `art/${file}`;
@@ -134,6 +157,18 @@ async function download(url: string): Promise<Buffer> {
   return Buffer.from(await res.arrayBuffer());
 }
 
+/** Tamaño final en el juego: los sprites se ven a unos 90 px, así que 256 px sobran. */
+export const MAX_SIDE = { sprite: 256, portrait: 320, wide: 960 } as const;
+
+/** Reduce cada imagen y la guarda como WebP ligero (necesita el paquete sharp). */
+export async function sharpOptimizer(): Promise<(image: Buffer, job: ArtJob) => Promise<Buffer>> {
+  const { default: sharp } = await import('sharp');
+  return (image, job) => {
+    const side = job.transparent ? MAX_SIDE.sprite : job.size === '1024x1024' ? MAX_SIDE.portrait : MAX_SIDE.wide;
+    return sharp(image).resize(side, side, { fit: 'inside', withoutEnlargement: true }).webp({ quality: 80, alphaQuality: 90, effort: 6 }).toBuffer();
+  };
+}
+
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 function sortKeys(obj: Record<string, string>): Record<string, string> {
@@ -159,7 +194,7 @@ async function main(): Promise<void> {
     return;
   }
 
-  const which = value('provider') ?? (process.env.OPENAI_API_KEY ? 'openai' : 'replicate');
+  const which = value('provider') ?? (process.env.OPENAI_API_KEY ? 'openai' : process.env.REPLICATE_API_TOKEN ? 'replicate' : 'pollinations');
   let provider: Provider;
   if (which === 'openai') {
     if (!process.env.OPENAI_API_KEY) throw new Error('Falta OPENAI_API_KEY.');
@@ -167,12 +202,18 @@ async function main(): Promise<void> {
   } else if (which === 'replicate') {
     if (!process.env.REPLICATE_API_TOKEN) throw new Error('Falta REPLICATE_API_TOKEN (o usa OPENAI_API_KEY).');
     provider = replicateProvider(process.env.REPLICATE_API_TOKEN, process.env.REPLICATE_BASE_URL, process.env.REPLICATE_MODEL);
+  } else if (which === 'pollinations') {
+    provider = pollinationsProvider(process.env.POLLINATIONS_BASE_URL, process.env.POLLINATIONS_MODEL);
+    // Servicio gratuito: de una en una para no saturarlo.
+    console.log('Usando Pollinations (gratis). Para más calidad: OPENAI_API_KEY o REPLICATE_API_TOKEN.');
   } else {
     throw new Error(`Proveedor desconocido: ${which}`);
   }
 
   console.log(`Generando ${jobs.length} ilustraciones con ${provider.name} en ${outDir}`);
-  const report = await generateAll({ provider, outDir, jobs, force: flag('force') });
+  const report = await generateAll({ provider, outDir, jobs, force: flag('force'), concurrency: which === 'pollinations' ? 1 : 3,
+    optimize: flag('keep-size') ? undefined : await sharpOptimizer(),
+  });
   console.log(`\nListo: ${report.generated.length} generadas, ${report.skipped.length} ya existían, ${report.failed.length} fallidas.`);
   if (report.failed.length) process.exitCode = 1;
 }
