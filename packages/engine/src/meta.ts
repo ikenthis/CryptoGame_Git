@@ -430,3 +430,66 @@ export function hashString(s: string): number {
   for (let i = 0; i < s.length; i++) h = Math.imul(h ^ s.charCodeAt(i), 16777619);
   return h >>> 0;
 }
+
+// ---------- Posesión y mercado entre jugadores ----------
+
+/** ¿El ejército solo usa cartas y comandante que el jugador posee? */
+export function ownsArmy(profile: Profile, army: { commander?: { id: CommanderId }; cards?: Array<{ card: CardId }> }): string | null {
+  if (army.commander && !ownsCommander(profile, army.commander.id)) return `No tienes a ${COMMANDERS[army.commander.id].name}.`;
+  for (const c of army.cards ?? []) if (!ownsCard(profile, c.card)) return `No tienes la carta ${CARDS[c.card].name}.`;
+  return null;
+}
+
+export type MarketItem =
+  | { kind: 'card'; id: CardId }
+  | { kind: 'commander'; id: CommanderId }
+  | { kind: 'resource'; id: Resource; qty: number };
+
+/** Comisión del mercado (5 %): se retira del juego para frenar la inflación de oro. */
+export const MARKET_FEE_BPS = 500;
+export const MAX_PRICE = 1_000_000;
+
+/** Valida un objeto recibido de fuera. El oro no se vende (es la moneda) ni lo que no es comerciable. */
+export function parseMarketItem(input: unknown): MarketItem {
+  const raw = (input ?? {}) as Record<string, unknown>;
+  if (raw.kind === 'card' && typeof raw.id === 'string' && raw.id in CARDS) return { kind: 'card', id: raw.id as CardId };
+  if (raw.kind === 'commander' && typeof raw.id === 'string' && raw.id in COMMANDERS) return { kind: 'commander', id: raw.id as CommanderId };
+  if (raw.kind === 'resource' && typeof raw.id === 'string' && raw.id in RESOURCES) {
+    const id = raw.id as Resource;
+    if (!RESOURCES[id].tradable || id === 'gold') fail(`${RESOURCES[id].name} no se puede comerciar.`);
+    if (!Number.isSafeInteger(raw.qty) || (raw.qty as number) <= 0) fail('Cantidad inválida.');
+    return { kind: 'resource', id, qty: raw.qty as number };
+  }
+  return fail('Objeto no válido para el mercado.');
+}
+
+/** Retira el objeto del perfil (queda en custodia del mercado). */
+export function takeItem(profile: Profile, item: MarketItem): Profile {
+  const p = clone(profile);
+  if (item.kind === 'card') {
+    if ((p.cards[item.id] ?? 0) <= 0) fail(`No tienes ${CARDS[item.id].name}.`);
+    p.cards[item.id]! -= 1;
+  } else if (item.kind === 'commander') {
+    if ((p.commanders[item.id] ?? 0) <= 0) fail(`No tienes a ${COMMANDERS[item.id].name}.`);
+    p.commanders[item.id]! -= 1;
+  } else {
+    pay(p, { [item.id]: item.qty });
+  }
+  return p;
+}
+
+export function giveItem(profile: Profile, item: MarketItem): Profile {
+  if (item.kind === 'card') return grant(profile, { cards: [item.id] });
+  if (item.kind === 'commander') return grant(profile, { commanders: [item.id] });
+  return grant(profile, { resources: { [item.id]: item.qty } });
+}
+
+export function itemLabel(item: MarketItem): string {
+  if (item.kind === 'card') return `${CARDS[item.id].name} (${RARITIES[CARDS[item.id].rarity].name})`;
+  if (item.kind === 'commander') return `${COMMANDERS[item.id].name} (${RARITIES[COMMANDERS[item.id].rarity].name})`;
+  return `${item.qty} ${RESOURCES[item.id].icon} ${RESOURCES[item.id].name}`;
+}
+
+export function marketFee(price: number): number {
+  return Math.floor((price * MARKET_FEE_BPS) / 10_000);
+}

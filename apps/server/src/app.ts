@@ -1,11 +1,16 @@
-import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
-import { timingSafeEqual } from 'node:crypto';
+import { randomBytes } from 'node:crypto';
+import { createServer, type IncomingMessage, type Server } from 'node:http';
 import {
-  ARMORS, BOARD_HEIGHT, BOARD_WIDTH, BUDGET, CARDS, CARD_TURN_MAX, DEPLOY_COLUMNS, ENERGY, MAX_CARDS, MAX_FEE_BPS,
-  MAX_TURNS, MAX_UNITS, PRESET_ARMIES, RACES, UNITS, simulate, validateArmy, type Army,
+  ARMORS, BOARD_HEIGHT, BOARD_WIDTH, BUDGET, CARDS, CARD_TURN_MAX, COMMANDERS, DEPLOY_COLUMNS, ENERGY, MAX_CARDS, MAX_FEE_BPS,
+  MAX_TURNS, MAX_UNITS, PRESET_ARMIES, RACES, UNITS, simulate, type Army,
 } from '@gentium/engine';
 import { signSession, verifySession, verifyTelegramInitData, type Session } from './auth.ts';
+import { gameRoutes } from './game.ts';
+import { RateLimiter, Raw, clientIp, fail, nonNegativeInt, readJson, requireAdmin, requireArmy, send, type Route } from './http.ts';
+import { MarketStore } from './market.ts';
+import { ProfileStore } from './profiles.ts';
 import { serveStatic } from './static.ts';
+import { telegramRoutes, type TelegramConfig } from './telegram.ts';
 import { StoreError, commitmentFor, poolOf, type Tournament, type TournamentStore } from './store.ts';
 
 export interface AppOptions {
@@ -28,32 +33,42 @@ export interface AppOptions {
   requireAuth?: boolean;
   /** Carpeta del cliente compilado para servirlo junto a la API. */
   staticDir?: string;
+  /** Perfiles de jugador (colección, recursos). Por defecto, en memoria. */
+  profiles?: ProfileStore;
+  /** Mercado entre jugadores. Por defecto, en memoria. */
+  market?: MarketStore;
+  /** Bot de Telegram (webhook y respuestas). Sin él, el webhook responde 503. */
+  telegram?: TelegramConfig | null;
+  /** Peticiones POST por minuto e IP (0 = sin límite). */
+  rateLimit?: number;
+  /** Confiar en X-Forwarded-For (solo detrás de un proxy propio). */
+  trustProxy?: boolean;
 }
 
-const MAX_BODY_BYTES = 16 * 1024;
+const SECURITY_HEADERS = {
+  'x-content-type-options': 'nosniff',
+  'referrer-policy': 'strict-origin-when-cross-origin',
+  // Sin X-Frame-Options: Telegram Web abre la Mini App dentro de un iframe.
+  'permissions-policy': 'camera=(), microphone=(), geolocation=()',
+};
+
 // Hasta 42 caracteres para admitir direcciones de wallet (0x…) en torneos de pago.
 const PLAYER_ID = /^[A-Za-z0-9_-]{3,42}$/;
 const TOURNAMENT_ID = /^[a-z0-9-]{3,48}$/;
 const SALT = /^[0-9a-f]{32}$/;
 const WALLET = /^0x[0-9a-fA-F]{40}$/;
 
-/** Respuesta que no es JSON (p. ej. CSV). */
-class Raw {
-  readonly body: string;
-  readonly type: string;
-  constructor(body: string, type: string) {
-    this.body = body;
-    this.type = type;
-  }
-}
 /** Prefijo reservado a identidades verificadas: un jugador anónimo no puede usarlo. */
 const VERIFIED_PREFIX = 'tg-';
 
 export function createApp(options: AppOptions): Server {
   const { store } = options;
   const now = options.now ?? (() => new Date());
+  const profiles = options.profiles ?? new ProfileStore();
+  const market = options.market ?? new MarketStore(profiles);
+  const limiter = options.rateLimit ? new RateLimiter(options.rateLimit) : null;
 
-  const routes: Array<[string, RegExp, (req: IncomingMessage, params: string[], url: URL) => Promise<unknown>]> = [
+  const routes: Route[] = [
     ['GET', /^\/api\/health$/, async () => ({ ok: true })],
 
     // Inicio de sesión desde la Mini App de Telegram.
@@ -67,12 +82,22 @@ export function createApp(options: AppOptions): Server {
       return { playerId, name, token: signSession(playerId, name, options.sessionSecret, now()) };
     }],
 
+    // Invitado: guarda el progreso en el servidor sin Telegram (p. ej. desde el navegador).
+    // No puede usar el mercado entre jugadores ni reclamar premios con identidad verificada.
+    ['POST', /^\/api\/auth\/guest$/, async (req) => {
+      if (!options.sessionSecret) fail(503, 'Las sesiones no están configuradas.');
+      const body = await readJson(req) as { name?: unknown };
+      const name = String(body.name ?? '').replace(/[^\p{L}\p{N} _-]/gu, '').trim().slice(0, 24) || 'Guerrero';
+      const playerId = `guest-${randomBytes(9).toString('base64url')}`;
+      return { playerId, name, token: signSession(playerId, name, options.sessionSecret, now(), 90 * 86_400) };
+    }],
+
     ['GET', /^\/api\/me$/, async (req) => sessionFrom(req) ?? fail(401, 'Sin sesión.')],
 
     ['GET', /^\/api\/config$/, async () => ({
       board: { width: BOARD_WIDTH, height: BOARD_HEIGHT, deployColumns: DEPLOY_COLUMNS },
       budget: BUDGET, maxUnits: MAX_UNITS, maxTurns: MAX_TURNS, units: UNITS,
-      energy: ENERGY, maxCards: MAX_CARDS, cardTurnMax: CARD_TURN_MAX, races: RACES, cards: CARDS, armors: ARMORS,
+      energy: ENERGY, maxCards: MAX_CARDS, cardTurnMax: CARD_TURN_MAX, races: RACES, cards: CARDS, armors: ARMORS, commanders: COMMANDERS,
       presets: Object.fromEntries(Object.entries(PRESET_ARMIES).map(([id, p]) => [id, p.name])),
     })],
 
@@ -118,7 +143,9 @@ export function createApp(options: AppOptions): Server {
       if (!session && options.requireAuth) fail(401, 'Inicia sesión para inscribirte.');
       const playerId = session?.sub ?? String(body.playerId ?? '');
       if (!PLAYER_ID.test(playerId)) fail(400, 'playerId: 3-42 caracteres alfanuméricos, "-" o "_".');
-      if (!session && playerId.startsWith(VERIFIED_PREFIX)) fail(400, `Los nombres que empiezan por "${VERIFIED_PREFIX}" están reservados.`);
+      if (!session && (playerId.startsWith(VERIFIED_PREFIX) || playerId.startsWith('guest-'))) {
+        fail(400, `Los nombres que empiezan por "${VERIFIED_PREFIX}" o "guest-" están reservados.`);
+      }
       const army = requireArmy(body.army);
       const t = store.get(id);
       if (t.cardPool === 'owned' && (army.cards ?? []).length > 0) {
@@ -165,6 +192,9 @@ export function createApp(options: AppOptions): Server {
       const find = (p: string | null) => t.entries.find((e) => e.playerId === p)?.army ?? fail(404, `Jugador ${p} no inscrito.`);
       return simulate(find(url.searchParams.get('left')), find(url.searchParams.get('right')));
     }],
+
+    ...gameRoutes({ profiles, market, now, session: (req) => sessionFrom(req) }),
+    ...telegramRoutes(options.telegram ?? null, store, now),
   ];
 
   function sessionFrom(req: IncomingMessage): Session | null {
@@ -175,13 +205,18 @@ export function createApp(options: AppOptions): Server {
 
   return createServer(async (req, res) => {
     try {
+      for (const [k, v] of Object.entries(SECURITY_HEADERS)) res.setHeader(k, v);
       const url = new URL(req.url ?? '/', 'http://localhost');
+      if (limiter && req.method === 'POST' && url.pathname !== '/api/telegram/webhook'
+        && !limiter.allow(clientIp(req, options.trustProxy ?? false), now().getTime())) {
+        fail(429, 'Demasiadas peticiones. Espera un minuto.');
+      }
       for (const [method, pattern, handler] of routes) {
         const match = pattern.exec(url.pathname);
         if (!match || req.method !== method) continue;
         const out = await handler(req, match.slice(1).map(decodeURIComponent), url);
         if (out instanceof Raw) {
-          res.writeHead(200, { 'content-type': out.type });
+          res.writeHead(200, { 'content-type': out.type, 'cache-control': 'no-store' });
           res.end(out.body);
         } else send(res, 200, out);
         return;
@@ -210,45 +245,4 @@ function publicView(t: Tournament, now: Date, detailed = false) {
   if (!t.result) return { ...base, commitments: t.entries.map((e) => ({ playerId: e.playerId, commitment: e.commitment })) };
   // Las wallets son privadas: solo salen en el CSV del organizador.
   return { ...base, result: t.result, entries: t.entries.map(({ wallet: _wallet, ...e }) => e) };
-}
-
-function requireArmy(input: unknown): Army {
-  const check = validateArmy(input);
-  if (!check.ok) fail(400, check.error);
-  return check.army;
-}
-
-function requireAdmin(req: IncomingMessage, token: string): void {
-  const given = Buffer.from(String(req.headers.authorization ?? ''));
-  const expected = Buffer.from(`Bearer ${token}`);
-  if (!token || given.length !== expected.length || !timingSafeEqual(given, expected)) fail(401, 'No autorizado.');
-}
-
-function nonNegativeInt(value: unknown, field: string): number {
-  if (!Number.isSafeInteger(value) || (value as number) < 0) fail(400, `${field} debe ser un entero no negativo.`);
-  return value as number;
-}
-
-function fail(status: number, message: string): never {
-  throw new StoreError(status, message);
-}
-
-async function readJson(req: IncomingMessage): Promise<unknown> {
-  const chunks: Buffer[] = [];
-  let size = 0;
-  for await (const chunk of req) {
-    size += (chunk as Buffer).length;
-    if (size > MAX_BODY_BYTES) fail(413, 'Cuerpo demasiado grande.');
-    chunks.push(chunk as Buffer);
-  }
-  try {
-    return JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}');
-  } catch {
-    fail(400, 'JSON inválido.');
-  }
-}
-
-function send(res: ServerResponse, status: number, body: unknown): void {
-  res.writeHead(status, { 'content-type': 'application/json; charset=utf-8' });
-  res.end(JSON.stringify(body));
 }
