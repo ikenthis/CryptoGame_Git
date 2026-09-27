@@ -44,7 +44,7 @@ createApp({
   requireAuth: process.env.REQUIRE_AUTH === '1',
   staticDir: existsSync(webDist) ? webDist : undefined,
 }).listen(port, () => {
-  console.log(`Bastión API en http://localhost:${port}`);
+  console.log(`Bellum Gentium API en http://localhost:${port}`);
   if (existsSync(webDist)) console.log(`Sirviendo el cliente compilado desde ${webDist}`);
   if (!process.env.TELEGRAM_BOT_TOKEN) console.log('TELEGRAM_BOT_TOKEN no definido: el inicio de sesión con Telegram está desactivado.');
 });

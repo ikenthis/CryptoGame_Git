@@ -13,7 +13,7 @@ export interface TutorialStep {
   next?: string;
 }
 
-const STORAGE_KEY = 'bastion.tutorial';
+const STORAGE_KEY = 'gentium.tutorial';
 
 export function tutorialSeen(): boolean {
   try {

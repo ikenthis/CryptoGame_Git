@@ -72,7 +72,7 @@ export class SoundEngine {
 
   setMuted(muted: boolean): void {
     this.muted = muted;
-    try { localStorage.setItem('bastion.muted', muted ? '1' : '0'); } catch { /* opcional */ }
+    try { localStorage.setItem('gentium.muted', muted ? '1' : '0'); } catch { /* opcional */ }
     if (this.ctx) this.master.gain.setTargetAtTime(muted ? 0 : 0.9, this.ctx.currentTime, 0.05);
   }
 
@@ -313,7 +313,7 @@ const RECIPES: Record<Sfx, Recipe> = {
 
 function readMuted(): boolean {
   try {
-    return localStorage.getItem('bastion.muted') === '1';
+    return localStorage.getItem('gentium.muted') === '1';
   } catch {
     return false;
   }

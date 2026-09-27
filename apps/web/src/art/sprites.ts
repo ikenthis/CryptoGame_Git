@@ -1,4 +1,4 @@
-import type { ArmorId, Race, UnitType } from '@bastion/engine';
+import type { ArmorId, Race, UnitType } from '@gentium/engine';
 import { ARMOR_ART, RACE_ART, type ArmorArt, type RaceArt } from './theme.ts';
 
 // Sprites procedurales: cada unidad se dibuja con vectores según su raza y su

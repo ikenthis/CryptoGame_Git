@@ -1,4 +1,4 @@
-import type { ArmorId, Race, Rarity } from '@bastion/engine';
+import type { ArmorId, Race, Rarity } from '@gentium/engine';
 
 // Paletas del arte procedural. Todo el aspecto visual sale de aquí: cambiar un
 // color aquí cambia sprites, cartas y efectos a la vez.

@@ -1,4 +1,4 @@
-import { CARDS, RACE_IDS, type CardId, type Race, type Rarity } from '@bastion/engine';
+import { CARDS, RACE_IDS, type CardId, type Race, type Rarity } from '@gentium/engine';
 
 // Dirección de arte para generar ilustraciones con IA. Todas comparten el mismo
 // estilo para que la colección se vea coherente. Los prompts van en inglés
@@ -68,7 +68,7 @@ export const ART_JOBS: ArtJob[] = [
   {
     id: 'scenes/keyart',
     size: '1536x1024',
-    prompt: `${ART_STYLE} Wide panoramic key art: five fantasy armies clash at sunset before a colossal stone fortress called the Bastion — ${RACE_IDS.map((r) => RACE_LOOK[r]).join('; ')}. Epic scale, banners, magic and fire in the sky.`,
+    prompt: `${ART_STYLE} Wide panoramic key art: five fantasy armies clash at sunset in the War of the Peoples, at the foot of a colossal ancient stone fortress — ${RACE_IDS.map((r) => RACE_LOOK[r]).join('; ')}. Epic scale, banners, magic and fire in the sky.`,
   },
   ...RACE_IDS.map((race): ArtJob => ({
     id: `races/${race}`,

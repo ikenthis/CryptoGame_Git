@@ -1,5 +1,5 @@
 {
-  "name": "@bastion/server",
+  "name": "@gentium/server",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -7,6 +7,6 @@
     "start": "node src/main.ts"
   },
   "dependencies": {
-    "@bastion/engine": "0.1.0"
+    "@gentium/engine": "0.1.0"
   }
 }

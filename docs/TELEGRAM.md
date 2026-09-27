@@ -1,4 +1,4 @@
-# Bastión como Mini App de Telegram
+# Bellum Gentium como Mini App de Telegram
 
 El mismo cliente web funciona dentro de Telegram. Cuando se abre desde un bot:
 
@@ -20,7 +20,7 @@ El mismo cliente web funciona dentro de Telegram. Cuando se abre desde un bot:
 
 ## 2. Publicar el juego con HTTPS
 
-Telegram solo abre Mini Apps servidas por HTTPS. El servidor de Bastión sirve
+Telegram solo abre Mini Apps servidas por HTTPS. El servidor de Bellum Gentium sirve
 la API y el cliente compilado desde el mismo dominio:
 
 ```bash

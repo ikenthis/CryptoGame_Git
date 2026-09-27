@@ -3,7 +3,7 @@ import {
   PRESET_ARMIES, RACES, RACE_IDS, RARITIES, UNITS, UNIT_TYPES,
   armyCost, cardEnergy, cardsForRace, simulate, statsFor, validateArmy,
   type ArmorId, type Army, type BattleResult, type Card, type CardPlay, type Placement, type Race, type Side, type UnitType,
-} from '@bastion/engine';
+} from '@gentium/engine';
 import { artUrl, loadArt } from './art/assets.ts';
 import { RACE_EMBLEM } from './art/icons.ts';
 import { getSprite } from './art/sprites.ts';
@@ -15,6 +15,9 @@ import { cardElement } from './ui/card.ts';
 import { Tutorial, tutorialSeen } from './ui/tutorial.ts';
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
+
+/** true en la demo publicada sin servidor (ver vite.config.ts). */
+declare const __DEMO__: boolean;
 
 // ---------- Estado ----------
 
@@ -362,7 +365,11 @@ for (const tab of $('tabs').querySelectorAll<HTMLButtonElement>('button')) {
 // ---------- Torneos ----------
 
 const playerInput = $<HTMLInputElement>('player');
-try { playerInput.value = localStorage.getItem('bastion.player') ?? ''; } catch { /* almacenamiento no disponible */ }
+const walletInput = $<HTMLInputElement>('wallet');
+try {
+  playerInput.value = localStorage.getItem('gentium.player') ?? '';
+  walletInput.value = localStorage.getItem('gentium.wallet') ?? '';
+} catch { /* almacenamiento no disponible */ }
 
 async function api<T>(path: string, init?: RequestInit): Promise<T> {
   const headers: Record<string, string> = { 'content-type': 'application/json' };
@@ -385,13 +392,17 @@ const escapeHtml = (s: string) => s.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt
 $('submit').onclick = async () => {
   const out = $('submit-status');
   const playerId = session?.playerId ?? playerInput.value.trim();
-  try { localStorage.setItem('bastion.player', playerId); } catch { /* opcional */ }
+  const wallet = walletInput.value.trim();
+  try {
+    localStorage.setItem('gentium.player', playerId);
+    localStorage.setItem('gentium.wallet', wallet);
+  } catch { /* opcional */ }
   try {
     const list = await api<TournamentView[]>('/api/tournaments');
     const arena = list.find((t) => t.status === 'open' && t.entryFee === 0);
     if (!arena) throw new Error('No hay una arena gratuita abierta ahora mismo.');
     const r = await api<{ commitment: string }>(`/api/tournaments/${arena.id}/entries`, {
-      method: 'POST', body: JSON.stringify({ playerId, army: currentArmy() }),
+      method: 'POST', body: JSON.stringify({ playerId, army: currentArmy(), ...(wallet ? { wallet } : {}) }),
     });
     out.textContent = `Inscrito en ${arena.name}. Compromiso: ${r.commitment.slice(0, 16)}…`;
     loadTournaments();
@@ -402,6 +413,7 @@ $('submit').onclick = async () => {
 
 async function loadTournaments(): Promise<void> {
   const box = $('tournaments');
+  if (__DEMO__) return;
   try {
     const list = await api<TournamentView[]>('/api/tournaments');
     if (list.length === 0) { box.textContent = 'No hay torneos todavía.'; return; }
@@ -477,7 +489,7 @@ document.addEventListener('click', (ev) => {
 let battlesFinished = 0;
 const tutorial = new Tutorial([
   {
-    title: '¡Bienvenido a Bastión!',
+    title: '¡Bienvenido a Bellum Gentium!',
     text: 'En un minuto ganarás tu primera batalla. Armas un ejército, lo colocas, eliges cartas… y la batalla se resuelve sola, sin azar: gana la mejor estrategia.',
     next: 'Empezar',
   },
@@ -561,6 +573,18 @@ initTelegram().then(async (app) => {
     $('submit-status').textContent = `No se pudo iniciar sesión con Telegram: ${(err as Error).message}`;
   }
 });
+
+if (__DEMO__) {
+  // Demo sin servidor: los torneos se anuncian en lugar de conectarse.
+  const panel = document.querySelector<HTMLElement>('[data-panel="tournaments"]')!;
+  for (const box of panel.children) (box as HTMLElement).hidden = true;
+  panel.insertAdjacentHTML('afterbegin', `
+    <div class="box">
+      <h2>Torneos: beta cerrada</h2>
+      <p>Esta es la demo de práctica. Los torneos con premio se abren pronto en la beta: arena diaria gratis, ejércitos ocultos hasta el cierre y premios en USDC para los mejores.</p>
+      <p class="muted">¿Quieres entrar en la beta y en los primeros torneos? Pide acceso a quien te pasó este enlace.</p>
+    </div>`);
+}
 
 renderAll();
 if (!tutorialSeen()) tutorial.start();

@@ -1,5 +1,5 @@
 {
-  "name": "@bastion/web",
+  "name": "@gentium/web",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -9,7 +9,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@bastion/engine": "0.1.0"
+    "@gentium/engine": "0.1.0"
   },
   "devDependencies": {
     "vite": "^7.1.0"

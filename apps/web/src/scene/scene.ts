@@ -2,7 +2,7 @@ import {
   BOARD_HEIGHT, BOARD_WIDTH, CARDS, DEPLOY_COLUMNS, UNITS,
   type ArmorId, type BattleEvent, type BattleResult, type CardId, type Placement, type Race, type Side,
   type StatusEffect, type UnitState, type UnitType,
-} from '@bastion/engine';
+} from '@gentium/engine';
 import type { Sfx } from '../audio/sound.ts';
 import { getSprite } from '../art/sprites.ts';
 import { ARMOR_ART, RACE_ART, RARITY_COLORS, STATUS_COLORS, TEAM_COLORS } from '../art/theme.ts';

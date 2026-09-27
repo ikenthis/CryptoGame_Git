@@ -1,4 +1,4 @@
-import { RACES, RARITIES, type Card } from '@bastion/engine';
+import { RACES, RARITIES, type Card } from '@gentium/engine';
 import { artUrl } from '../art/assets.ts';
 import { CARD_ART, ENERGY_ICON } from '../art/icons.ts';
 

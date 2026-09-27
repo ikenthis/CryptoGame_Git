@@ -3,7 +3,7 @@ import { timingSafeEqual } from 'node:crypto';
 import {
   ARMORS, BOARD_HEIGHT, BOARD_WIDTH, BUDGET, CARDS, CARD_TURN_MAX, DEPLOY_COLUMNS, ENERGY, MAX_CARDS, MAX_FEE_BPS,
   MAX_TURNS, MAX_UNITS, PRESET_ARMIES, RACES, UNITS, simulate, validateArmy, type Army,
-} from '@bastion/engine';
+} from '@gentium/engine';
 import { signSession, verifySession, verifyTelegramInitData, type Session } from './auth.ts';
 import { serveStatic } from './static.ts';
 import { StoreError, commitmentFor, poolOf, type Tournament, type TournamentStore } from './store.ts';
@@ -35,6 +35,17 @@ const MAX_BODY_BYTES = 16 * 1024;
 const PLAYER_ID = /^[A-Za-z0-9_-]{3,42}$/;
 const TOURNAMENT_ID = /^[a-z0-9-]{3,48}$/;
 const SALT = /^[0-9a-f]{32}$/;
+const WALLET = /^0x[0-9a-fA-F]{40}$/;
+
+/** Respuesta que no es JSON (p. ej. CSV). */
+class Raw {
+  readonly body: string;
+  readonly type: string;
+  constructor(body: string, type: string) {
+    this.body = body;
+    this.type = type;
+  }
+}
 /** Prefijo reservado a identidades verificadas: un jugador anónimo no puede usarlo. */
 const VERIFIED_PREFIX = 'tg-';
 
@@ -99,7 +110,9 @@ export function createApp(options: AppOptions): Server {
     ['GET', /^\/api\/tournaments\/([^/]+)$/, async (_req, [id]) => publicView(store.get(id), now(), true)],
 
     ['POST', /^\/api\/tournaments\/([^/]+)\/entries$/, async (req, [id]) => {
-      const body = await readJson(req) as { playerId?: unknown; army?: unknown; salt?: unknown; paymentTx?: unknown };
+      const body = await readJson(req) as { playerId?: unknown; army?: unknown; salt?: unknown; paymentTx?: unknown; wallet?: unknown };
+      const wallet = body.wallet ? String(body.wallet).trim() : undefined;
+      if (wallet && !WALLET.test(wallet)) fail(400, 'La wallet debe ser una dirección 0x de 40 caracteres hexadecimales.');
       // Con sesión, la identidad sale del token y no del cuerpo de la petición.
       const session = sessionFrom(req);
       if (!session && options.requireAuth) fail(401, 'Inicia sesión para inscribirte.');
@@ -125,8 +138,19 @@ export function createApp(options: AppOptions): Server {
           fail(402, 'No se encontró el pago de la entrada.');
         }
       }
-      const entry = store.enter(id, playerId, army, now(), salt);
+      const entry = store.enter(id, playerId, army, now(), salt, wallet);
       return { playerId, submittedAt: entry.submittedAt, commitment: entry.commitment, salt: entry.salt };
+    }],
+
+    // Lista de pagos para el organizador: quién cobra, cuánto y en qué wallet.
+    ['GET', /^\/api\/tournaments\/([^/]+)\/payouts\.csv$/, async (req, [id]) => {
+      requireAdmin(req, options.adminToken);
+      const t = store.get(id);
+      if (!t.result) fail(409, 'El torneo aún no está cerrado.');
+      const wallets = new Map(t.entries.map((e) => [e.playerId, e.wallet ?? '']));
+      const ranks = new Map(t.result.standings.map((s) => [s.id, s.rank]));
+      const rows = t.result.plan.payouts.map((p) => [ranks.get(p.id), p.id, wallets.get(p.id) || 'SIN WALLET', (p.amount / 1_000_000).toFixed(6)].join(','));
+      return new Raw(['puesto,jugador,wallet,usdc', ...rows].join('\n') + '\n', 'text/csv; charset=utf-8');
     }],
 
     ['POST', /^\/api\/tournaments\/([^/]+)\/close$/, async (req, [id]) => {
@@ -155,7 +179,11 @@ export function createApp(options: AppOptions): Server {
       for (const [method, pattern, handler] of routes) {
         const match = pattern.exec(url.pathname);
         if (!match || req.method !== method) continue;
-        send(res, 200, await handler(req, match.slice(1).map(decodeURIComponent), url));
+        const out = await handler(req, match.slice(1).map(decodeURIComponent), url);
+        if (out instanceof Raw) {
+          res.writeHead(200, { 'content-type': out.type });
+          res.end(out.body);
+        } else send(res, 200, out);
         return;
       }
       if (!url.pathname.startsWith('/api/') && options.staticDir && await serveStatic(options.staticDir, req, res, url.pathname)) return;
@@ -180,7 +208,8 @@ function publicView(t: Tournament, now: Date, detailed = false) {
   };
   if (!detailed) return base;
   if (!t.result) return { ...base, commitments: t.entries.map((e) => ({ playerId: e.playerId, commitment: e.commitment })) };
-  return { ...base, result: t.result, entries: t.entries };
+  // Las wallets son privadas: solo salen en el CSV del organizador.
+  return { ...base, result: t.result, entries: t.entries.map(({ wallet: _wallet, ...e }) => e) };
 }
 
 function requireArmy(input: unknown): Army {

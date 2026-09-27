@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.28;
 
-import {BastionItems} from "../src/BastionItems.sol";
+import {GentiumItems} from "../src/GentiumItems.sol";
 import {IAccessControl} from "@openzeppelin/contracts/access/IAccessControl.sol";
 import {vm} from "./utils/Vm.sol";
 
-contract BastionItemsTest {
+contract GentiumItemsTest {
     address constant ADMIN = address(0xA11CE);
     address constant GAME = address(0x6A3E);
     address constant TREASURY = address(0x7EA5);
@@ -16,19 +16,19 @@ contract BastionItemsTest {
     uint256 constant ANCESTRAL_GOLEM = 15;
     uint256 constant ECLIPSE_ARMOR = 1005;
 
-    BastionItems items;
+    GentiumItems items;
 
     function setUp() public {
-        items = new BastionItems("https://bastion.example/items/{id}.json", ADMIN, TREASURY, 500);
+        items = new GentiumItems("https://gentium.example/items/{id}.json", ADMIN, TREASURY, 500);
         bytes32 minter = items.MINTER_ROLE();
         vm.prank(ADMIN);
         items.grantRole(minter, GAME);
         vm.prank(ADMIN);
-        items.defineItem(FIRE_ARROW, BastionItems.Kind.Card, BastionItems.Rarity.Common, 0);
+        items.defineItem(FIRE_ARROW, GentiumItems.Kind.Card, GentiumItems.Rarity.Common, 0);
         vm.prank(ADMIN);
-        items.defineItem(ANCESTRAL_GOLEM, BastionItems.Kind.Card, BastionItems.Rarity.Legendary, 2);
+        items.defineItem(ANCESTRAL_GOLEM, GentiumItems.Kind.Card, GentiumItems.Rarity.Legendary, 2);
         vm.prank(ADMIN);
-        items.defineItem(ECLIPSE_ARMOR, BastionItems.Kind.Armor, BastionItems.Rarity.Legendary, 100);
+        items.defineItem(ECLIPSE_ARMOR, GentiumItems.Kind.Armor, GentiumItems.Rarity.Legendary, 100);
     }
 
     function _eq(uint256 a, uint256 b) internal pure {
@@ -48,7 +48,7 @@ contract BastionItemsTest {
         vm.prank(GAME);
         items.mint(ANA, ANCESTRAL_GOLEM, 2);
         vm.prank(GAME);
-        vm.expectRevert(abi.encodeWithSelector(BastionItems.SupplyExceeded.selector, ANCESTRAL_GOLEM, 0));
+        vm.expectRevert(abi.encodeWithSelector(GentiumItems.SupplyExceeded.selector, ANCESTRAL_GOLEM, 0));
         items.mint(BETO, ANCESTRAL_GOLEM, 1);
     }
 
@@ -60,14 +60,14 @@ contract BastionItemsTest {
 
     function test_legendariaExigeLimite() public {
         vm.prank(ADMIN);
-        vm.expectRevert(BastionItems.InvalidParams.selector);
-        items.defineItem(99, BastionItems.Kind.Card, BastionItems.Rarity.Legendary, 0);
+        vm.expectRevert(GentiumItems.InvalidParams.selector);
+        items.defineItem(99, GentiumItems.Kind.Card, GentiumItems.Rarity.Legendary, 0);
     }
 
     function test_objetoInmutableUnaVezDefinido() public {
         vm.prank(ADMIN);
-        vm.expectRevert(abi.encodeWithSelector(BastionItems.ItemExists.selector, ANCESTRAL_GOLEM));
-        items.defineItem(ANCESTRAL_GOLEM, BastionItems.Kind.Card, BastionItems.Rarity.Legendary, 1_000_000);
+        vm.expectRevert(abi.encodeWithSelector(GentiumItems.ItemExists.selector, ANCESTRAL_GOLEM));
+        items.defineItem(ANCESTRAL_GOLEM, GentiumItems.Kind.Card, GentiumItems.Rarity.Legendary, 1_000_000);
     }
 
     function test_soloElJuegoAcuna() public {
@@ -79,7 +79,7 @@ contract BastionItemsTest {
 
     function test_noAcunaObjetosInexistentes() public {
         vm.prank(GAME);
-        vm.expectRevert(abi.encodeWithSelector(BastionItems.UnknownItem.selector, 404));
+        vm.expectRevert(abi.encodeWithSelector(GentiumItems.UnknownItem.selector, 404));
         items.mint(ANA, 404, 1);
     }
 
@@ -93,7 +93,7 @@ contract BastionItemsTest {
 
     function test_regaliaConTope() public {
         vm.prank(ADMIN);
-        vm.expectRevert(BastionItems.InvalidParams.selector);
+        vm.expectRevert(GentiumItems.InvalidParams.selector);
         items.setRoyalty(TREASURY, 1001);
     }
 }

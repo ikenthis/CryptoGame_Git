@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Bastión</title>
+    <title>Bellum Gentium</title>
     <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>⚔</text></svg>" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -12,7 +12,8 @@
   </head>
   <body>
     <header>
-      <h1>Bastión</h1>
+      <h1>Bellum Gentium</h1>
+      <div class="motto">La guerra de los pueblos</div>
       <p>Elige tu raza, forja tu ejército, prepara tus cartas y conquista torneos.</p>
       <div class="header-actions">
         <button id="tutorial-open" class="btn ghost small">❔ Tutorial</button>
@@ -74,6 +75,9 @@
               <input id="player" placeholder="Tu nombre de jugador" maxlength="42" />
               <button id="submit" class="btn primary">Inscribirme</button>
             </div>
+            <label class="wallet-field" for="wallet">Wallet para cobrar premios (red Base, opcional)
+              <input id="wallet" placeholder="0x…" maxlength="42" autocomplete="off" spellcheck="false" />
+            </label>
             <div id="submit-status" class="muted"></div>
           </div>
           <div class="box">

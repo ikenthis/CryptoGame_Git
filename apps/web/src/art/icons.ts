@@ -1,4 +1,4 @@
-import type { CardId, Race } from '@bastion/engine';
+import type { CardId, Race } from '@gentium/engine';
 
 // Ilustraciones SVG de cartas y emblemas de raza (viewBox 64×64).
 

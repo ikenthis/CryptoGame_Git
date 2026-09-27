@@ -1,4 +1,4 @@
-# Bastión
+# Bellum Gentium
 
 Juego de estrategia por turnos con torneos de habilidad y premios en USDC.
 Eliges una de **5 razas** (Humanos, Elfos, Orcos, No-muertos, Enanos), armas un
@@ -12,6 +12,7 @@ primera batalla y funciona como **Mini App de Telegram**.
 
 - Diseño, economía, aspectos legales y hoja de ruta: [docs/GDD.md](docs/GDD.md)
 - Publicar en Telegram: [docs/TELEGRAM.md](docs/TELEGRAM.md)
+- Plan de lanzamiento de prueba, marketing y premios: [docs/MARKETING.md](docs/MARKETING.md)
 
 ## Estructura
 
@@ -21,7 +22,7 @@ primera batalla y funciona como **Mini App de Telegram**.
 | `apps/server` | API HTTP (Node sin framework): torneos con ejércitos ocultos, cierre, clasificación, repeticiones, login de Telegram y servidor del cliente compilado |
 | `apps/web` | Cliente web (Vite + canvas): sprites procedurales, efectos de batalla, sonido, tutorial, cartas, armería, torneos e integración con Telegram |
 | `tools/art` | Generador de ilustraciones con IA (cartas, retratos de raza e imagen principal) |
-| `contracts` | `TournamentEscrow.sol` (escrow de entradas USDC) y `BastionItems.sol` (cartas y armaduras ERC-1155 con suministro limitado y regalías), con Foundry |
+| `contracts` | `TournamentEscrow.sol` (escrow de entradas USDC) y `GentiumItems.sol` (cartas y armaduras ERC-1155 con suministro limitado y regalías), con Foundry |
 
 ## Arrancar en local
 
@@ -35,6 +36,13 @@ npm run dev:web                      # cliente en http://localhost:5173
 
 Galería de sprites para arte: http://localhost:5173/galeria.html
 (`?mode=armors&type=knight` muestra todas las armaduras de una unidad).
+
+Demo sin servidor en un solo HTML (práctica, tutorial, cartas y armería), para
+compartir: `npm run build:demo` → `apps/web/dist-demo/bellum-gentium.html`.
+
+Premios: los jugadores pueden dejar una wallet (Base) al inscribirse; es
+privada. Al cerrar un torneo, `GET /api/tournaments/<id>/payouts.csv` (con el
+token de admin) da puesto, jugador, wallet e importe para pagar a mano.
 
 Producción (API y cliente en un solo servidor): `cp .env.example .env`, rellenar
 y `npm run build:web && node --env-file=.env apps/server/src/main.ts`.

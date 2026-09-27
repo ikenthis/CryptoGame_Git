@@ -1,4 +1,4 @@
-# Bastión: documento de diseño (GDD)
+# Bellum Gentium: documento de diseño (GDD)
 
 > Estrategia por turnos con torneos de habilidad y premios en USDC.
 > Principio rector: **divertido primero, se gana después**. Ningún premio se paga
@@ -6,7 +6,7 @@
 
 ## 1. Visión
 
-Bastión es un juego de estrategia rápido: cada jugador arma un ejército con un
+Bellum Gentium es un juego de estrategia rápido: cada jugador arma un ejército con un
 presupuesto limitado, lo coloca en su mitad del tablero y la batalla se resuelve
 sola, de forma **determinista** (sin azar). La habilidad está en *qué* unidades
 elegir y *dónde* colocarlas.
@@ -18,7 +18,7 @@ elegir y *dónde* colocarlas.
 
 ### Por qué este formato
 
-| Necesidad | Cómo la cubre Bastión |
+| Necesidad | Cómo la cubre Bellum Gentium |
 |---|---|
 | Captar rápido | Se entiende en 10 segundos (elige, coloca, mira). Sin wallet para empezar. |
 | Legal: habilidad, no azar | Motor sin aleatoriedad: el resultado depende solo de las decisiones. |
@@ -176,7 +176,7 @@ cosméticos, comisiones), **nunca** de los depósitos de otros jugadores.
 
 - **Se consiguen jugando:** recompensas de misiones, rachas, ligas y temporadas,
   y también fragmentos para fabricar la carta que quieras.
-- **Son del jugador:** tokens ERC-1155 (`contracts/src/BastionItems.sol`) que se
+- **Son del jugador:** tokens ERC-1155 (`contracts/src/GentiumItems.sol`) que se
   pueden vender o regalar en cualquier mercado compatible (OpenSea, Magic
   Eden…). Cada reventa paga una **regalía del 5%** al tesoro (tope del 10% en
   el contrato): es un ingreso recurrente que no sale de los premios.
@@ -248,7 +248,7 @@ apps/web          Cliente (Vite + canvas): sprites procedurales por raza y
                   armadura, efectos y partículas, cartas, armería y torneos.
 contracts         TournamentEscrow.sol: escrow USDC, tope de comisión,
                   compromisos, reembolsos.
-                  BastionItems.sol: cartas y armaduras ERC-1155 con suministro
+                  GentiumItems.sol: cartas y armaduras ERC-1155 con suministro
                   limitado y regalías ERC-2981.
 ```
 

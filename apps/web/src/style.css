@@ -49,6 +49,7 @@ header h1 {
   color: transparent;
   filter: drop-shadow(0 2px 0 #000) drop-shadow(0 0 18px rgba(232, 193, 100, 0.35));
 }
+.motto { margin-top: 6px; font: 600 13px var(--display); letter-spacing: 5px; text-transform: uppercase; color: var(--gold); opacity: 0.85; }
 .header-actions { display: flex; gap: 8px; justify-content: center; margin-top: 10px; }
 header p { margin: 8px 0 0; color: var(--muted); font-family: var(--display); letter-spacing: 0.5px; }
 
@@ -333,3 +334,6 @@ body.telegram header { padding-top: 10px; }
 body.telegram header h1 { font-size: 30px; }
 body.telegram header p { display: none; }
 body.telegram main { padding-top: 8px; }
+
+.wallet-field { display: flex; flex-direction: column; align-items: stretch; gap: 4px; margin-top: 8px; font-size: 12.5px; }
+.wallet-field input { font-family: ui-monospace, 'SFMono-Regular', Menlo, monospace; font-size: 13px; }

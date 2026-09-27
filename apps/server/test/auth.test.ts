@@ -5,7 +5,7 @@ import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, before, describe, it } from 'node:test';
-import { PRESET_ARMIES } from '@bastion/engine';
+import { PRESET_ARMIES } from '@gentium/engine';
 import { createApp } from '../src/app.ts';
 import { signSession, verifySession, verifyTelegramInitData } from '../src/auth.ts';
 import { TournamentStore } from '../src/store.ts';
@@ -24,7 +24,7 @@ function initData(user: object, authDate = nowSec, botToken = BOT): string {
   return new URLSearchParams({ ...fields, hash }).toString();
 }
 
-const ana = { id: 42, first_name: 'Ana', username: 'ana_bastion' };
+const ana = { id: 42, first_name: 'Ana', username: 'ana_gentium' };
 
 describe('verifyTelegramInitData', () => {
   it('acepta datos firmados por el bot', () => {
@@ -32,7 +32,7 @@ describe('verifyTelegramInitData', () => {
   });
 
   it('rechaza datos alterados, de otro bot o caducados', () => {
-    const tampered = initData(ana).replace('ana_bastion', 'impostor');
+    const tampered = initData(ana).replace('ana_gentium', 'impostor');
     assert.equal(verifyTelegramInitData(tampered, BOT, NOW), null);
     assert.equal(verifyTelegramInitData(initData(ana, nowSec, 'otro:bot'), BOT, NOW), null);
     assert.equal(verifyTelegramInitData(initData(ana, nowSec - 2 * 86_400), BOT, NOW), null);
@@ -61,7 +61,7 @@ describe('API con Telegram y estáticos', () => {
   before(async () => {
     dir = await mkdtemp(join(tmpdir(), 'web-'));
     await mkdir(join(dir, 'assets'));
-    await writeFile(join(dir, 'index.html'), '<!doctype html><title>Bastión</title>');
+    await writeFile(join(dir, 'index.html'), '<!doctype html><title>Bellum Gentium</title>');
     await writeFile(join(dir, 'assets', 'app.js'), 'console.log(1)');
     const store = new TournamentStore();
     store.create({ id: 'arena', name: 'Arena', closesAt: '2026-01-02T00:00:00Z', entryFee: 0, sponsorPool: 0, feeBps: 0, cardPool: 'open' });
@@ -89,7 +89,7 @@ describe('API con Telegram y estáticos', () => {
     assert.equal(login.status, 200);
     const { token, playerId, name } = await login.json() as { token: string; playerId: string; name: string };
     assert.equal(playerId, 'tg-42');
-    assert.equal(name, 'ana_bastion');
+    assert.equal(name, 'ana_gentium');
 
     const me = await fetch(`${base}/api/me`, { headers: { authorization: `Bearer ${token}` } });
     assert.equal((await me.json() as { sub: string }).sub, 'tg-42');
@@ -116,7 +116,7 @@ describe('API con Telegram y estáticos', () => {
     assert.match(home.headers.get('content-type')!, /text\/html/);
     const asset = await fetch(`${base}/assets/app.js`);
     assert.match(asset.headers.get('cache-control')!, /immutable/);
-    assert.match(await (await fetch(`${base}/partida/123`)).text(), /Bastión/);
+    assert.match(await (await fetch(`${base}/partida/123`)).text(), /Bellum Gentium/);
     assert.equal((await fetch(`${base}/..%2F..%2Fpackage.json`)).status, 404);
     assert.equal((await fetch(`${base}/api/nada`)).status, 404);
   });

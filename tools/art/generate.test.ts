@@ -5,7 +5,7 @@ import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, before, describe, it } from 'node:test';
-import { CARD_IDS, RACE_IDS } from '@bastion/engine';
+import { CARD_IDS, RACE_IDS } from '@gentium/engine';
 import { generateAll, openaiProvider, replicateProvider } from './generate.ts';
 import { ART_JOBS } from './prompts.ts';
 

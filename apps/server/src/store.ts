@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from '
 import { dirname } from 'node:path';
 import {
   canonicalArmy, computePayouts, runTournament, type Army, type PayoutPlan, type Standing,
-} from '@bastion/engine';
+} from '@gentium/engine';
 
 export interface Entry {
   playerId: string;
@@ -12,6 +12,8 @@ export interface Entry {
   salt: string;
   /** sha256(torneo|jugador|ejército canónico|sal). Es lo que se registra on-chain. */
   commitment: string;
+  /** Wallet (Base) donde el jugador quiere cobrar. Privada: nunca se publica. */
+  wallet?: string;
 }
 
 export interface TournamentResult {
@@ -90,12 +92,13 @@ export class TournamentStore {
   }
 
   /** Inscribe o reemplaza el ejército de un jugador. Reemplazar lo manda al final (desempate por orden). */
-  enter(id: string, playerId: string, army: Army, now: Date, salt = randomBytes(16).toString('hex')): Entry {
+  enter(id: string, playerId: string, army: Army, now: Date, salt = randomBytes(16).toString('hex'), wallet?: string): Entry {
     const t = this.get(id);
     if (t.result || now >= new Date(t.closesAt)) throw new StoreError(409, 'El torneo ya está cerrado.');
     const entry: Entry = {
       playerId, army, salt, submittedAt: now.toISOString(), commitment: commitmentFor(id, playerId, army, salt),
     };
+    if (wallet) entry.wallet = wallet;
     t.entries = t.entries.filter((e) => e.playerId !== playerId);
     t.entries.push(entry);
     this.save();

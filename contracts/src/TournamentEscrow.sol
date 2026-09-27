@@ -7,7 +7,7 @@ interface IERC20 {
 }
 
 /// @title TournamentEscrow
-/// @notice Custodia las entradas de los torneos de Bastión (en USDC) hasta que
+/// @notice Custodia las entradas de los torneos de Bellum Gentium (en USDC) hasta que
 ///         se publican los resultados. Garantías para el jugador:
 ///         - La comisión del organizador tiene un tope fijo en el código (MAX_FEE_BPS).
 ///         - Premios + comisión deben sumar exactamente el pozo: nada se queda "perdido".

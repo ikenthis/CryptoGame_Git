@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import type { AddressInfo } from 'node:net';
 import { after, before, describe, it } from 'node:test';
-import { PRESET_ARMIES } from '@bastion/engine';
+import { PRESET_ARMIES } from '@gentium/engine';
 import { createApp } from '../src/app.ts';
 import { TournamentStore, commitmentFor } from '../src/store.ts';
 
@@ -93,6 +93,27 @@ describe('API', () => {
   it('rechaza cartas de otra raza', async () => {
     const army = { ...PRESET_ARMIES.horde.army, cards: [{ card: 'sylvaran-storm', turn: 1 }] };
     assert.equal((await call('POST', '/api/simulate', { army, opponent: 'wall' })).status, 400);
+  });
+
+  it('guarda la wallet de premios en privado y la exporta solo al organizador', async () => {
+    await call('POST', '/api/tournaments', { id: 'copa-premios', closesAt: '2026-01-10T00:00:00Z', sponsorPool: 20_000_000 }, true);
+    const wallet = '0x' + 'ab'.repeat(20);
+    assert.equal((await call('POST', '/api/tournaments/copa-premios/entries', { playerId: 'ana', army: PRESET_ARMIES.wall.army, wallet: 'no-es-wallet' })).status, 400);
+    assert.equal((await call('POST', '/api/tournaments/copa-premios/entries', { playerId: 'ana', army: PRESET_ARMIES.wall.army, wallet })).status, 200);
+    assert.equal((await call('POST', '/api/tournaments/copa-premios/entries', { playerId: 'beto', army: PRESET_ARMIES.volley.army })).status, 200);
+    await call('POST', '/api/tournaments/copa-premios/close', {}, true);
+    const view = await call('GET', '/api/tournaments/copa-premios');
+    assert.ok(!JSON.stringify(view.body).includes(wallet), 'la wallet no debe ser pública');
+
+    const csvUrl = `${base}/api/tournaments/copa-premios/payouts.csv`;
+    assert.equal((await fetch(csvUrl)).status, 401);
+    const csv = await (await fetch(csvUrl, { headers: { authorization: `Bearer ${ADMIN}` } })).text();
+    const lines = csv.trim().split('\n');
+    assert.equal(lines[0], 'puesto,jugador,wallet,usdc');
+    const total = lines.slice(1).reduce((s, l) => s + Number(l.split(',')[3]), 0);
+    assert.equal(total, 20);
+    assert.ok(lines.some((l) => l.includes(wallet)));
+    assert.ok(lines.some((l) => l.includes('SIN WALLET')));
   });
 
   it('rechaza comisiones por encima del máximo', async () => {

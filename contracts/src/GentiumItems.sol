@@ -5,8 +5,8 @@ import {ERC1155} from "@openzeppelin/contracts/token/ERC1155/ERC1155.sol";
 import {ERC2981} from "@openzeppelin/contracts/token/common/ERC2981.sol";
 import {AccessControl} from "@openzeppelin/contracts/access/AccessControl.sol";
 
-/// @title BastionItems
-/// @notice Cartas y armaduras de Bastión como tokens ERC-1155: son del jugador,
+/// @title GentiumItems
+/// @notice Cartas y armaduras de Bellum Gentium como tokens ERC-1155: son del jugador,
 ///         se pueden vender o regalar en cualquier mercado compatible y cada
 ///         reventa paga una regalía (ERC-2981) al tesoro del juego.
 ///         Garantías para el coleccionista:
@@ -16,7 +16,7 @@ import {AccessControl} from "@openzeppelin/contracts/access/AccessControl.sol";
 ///         - Los objetos se acuñan como recompensa por jugar (MINTER_ROLE lo usa el
 ///           servidor del juego). Este contrato no vende sobres aleatorios.
 /// @dev SIN AUDITAR. No desplegar en mainnet sin una auditoría externa.
-contract BastionItems is ERC1155, ERC2981, AccessControl {
+contract GentiumItems is ERC1155, ERC2981, AccessControl {
     bytes32 public constant MINTER_ROLE = keccak256("MINTER_ROLE");
     uint96 public constant MAX_ROYALTY_BPS = 1000; // 10%
 
