@@ -1,4 +1,4 @@
-import type { ArmorId, Race, UnitType } from '@gentium/engine';
+import { BOSSES, COMMANDERS, type ArmorId, type Race, type Special, type UnitType } from '@gentium/engine';
 import { ARMOR_ART, RACE_ART, type ArmorArt, type RaceArt } from './theme.ts';
 
 // Sprites procedurales: cada unidad se dibuja con vectores según su raza y su
@@ -18,8 +18,15 @@ interface Painter {
   a: ArmorArt;
 }
 
-export function getSprite(type: UnitType, race: Race, armor: ArmorId, facing: 1 | -1, white = false): HTMLCanvasElement {
-  const key = `${type}|${race}|${armor}|${facing}|${white}`;
+/** Sprite de cualquier unidad, incluidos comandantes (con corona) y jefes. */
+export function spriteFor(u: { type: UnitType; special?: Special }, race: Race, armor: ArmorId, facing: 1 | -1, white = false): HTMLCanvasElement {
+  if (u.special?.kind === 'commander') return getSprite(u.type, race, armor, facing, white, u.special.id);
+  if (u.special?.kind === 'boss') return getSprite(u.type, race, armor, facing, white, u.special.id);
+  return getSprite(u.type, race, armor, facing, white);
+}
+
+export function getSprite(type: UnitType, race: Race, armor: ArmorId, facing: 1 | -1, white = false, specialId = ''): HTMLCanvasElement {
+  const key = `${type}|${specialId}|${race}|${armor}|${facing}|${white}`;
   let canvas = cache.get(key);
   if (canvas) return canvas;
   canvas = document.createElement('canvas');
@@ -33,7 +40,9 @@ export function getSprite(type: UnitType, race: Race, armor: ArmorId, facing: 1 
   c.lineJoin = 'round';
   c.lineCap = 'round';
   const p: Painter = { c, race, r: RACE_ART[race], a: ARMOR_ART[armor] };
-  DRAW[type](p);
+  if (type === 'commander' && specialId in COMMANDERS) drawCommander(p, specialId as keyof typeof COMMANDERS);
+  else if (type === 'boss' && specialId in BOSSES) (BOSSES[specialId as keyof typeof BOSSES].look === 'dragon' ? drawDragon : drawColossus)(p);
+  else DRAW[type](p);
   if (white) {
     c.setTransform(1, 0, 0, 1, 0, 0);
     c.globalCompositeOperation = 'source-in';
@@ -319,7 +328,95 @@ function robe(p: Painter, white: boolean): void {
 
 // ---------- Unidades ----------
 
+// ---------- Comandantes y jefes ----------
+
+function drawCommander(p: Painter, id: keyof typeof COMMANDERS): void {
+  const def = COMMANDERS[id];
+  // Los comandantes siempre llevan capa y penacho, sea cual sea la armadura.
+  const lord: Painter = { ...p, a: { ...p.a, cape: true, plume: true } };
+  DRAW[def.archetype](lord);
+  const { c } = p;
+  const top = def.archetype === 'knight' ? 20 : 14;
+  c.save();
+  c.shadowColor = '#ffd24a';
+  c.shadowBlur = 8;
+  const g = c.createLinearGradient(0, top - 8, 0, top + 4);
+  g.addColorStop(0, '#fff3b0');
+  g.addColorStop(1, '#c9962e');
+  shape(p, g, (c) => {
+    c.moveTo(41, top + 4); c.lineTo(40, top - 5); c.lineTo(45, top - 1); c.lineTo(50.5, top - 9);
+    c.lineTo(56, top - 1); c.lineTo(61, top - 5); c.lineTo(60, top + 4); c.closePath();
+  });
+  c.restore();
+  shape(p, '#e0245e', (c) => c.arc(50.5, top, 1.8, 0, Math.PI * 2), false);
+  shape(p, '#46c8ff', (c) => { c.arc(44.5, top + 1.5, 1.2, 0, Math.PI * 2); c.moveTo(57.7, top + 1.5); c.arc(56.5, top + 1.5, 1.2, 0, Math.PI * 2); }, false);
+}
+
+function drawDragon(p: Painter): void {
+  const { c } = p;
+  const scale = (x0: number, y0: number, x1: number, y1: number) => {
+    const g = c.createLinearGradient(x0, y0, x1, y1);
+    g.addColorStop(0, '#5a2a1c');
+    g.addColorStop(0.5, '#2b1512');
+    g.addColorStop(1, '#0d0707');
+    return g;
+  };
+  // Ala trasera.
+  shape(p, '#3a1210', (c) => { c.moveTo(44, 48); c.lineTo(30, 6); c.lineTo(22, 22); c.lineTo(14, 16); c.lineTo(16, 40); c.closePath(); });
+  // Cola.
+  shape(p, scale(0, 55, 30, 80), (c) => { c.moveTo(30, 62); c.quadraticCurveTo(10, 70, 2, 54); c.lineTo(6, 52); c.quadraticCurveTo(14, 64, 30, 56); c.closePath(); });
+  // Patas.
+  for (const x of [32, 54]) shape(p, scale(x, 70, x + 10, 92), (c) => { c.roundRect(x, 70, 10, 18, 4); });
+  shape(p, '#e8dcc0', (c) => { for (const x of [32, 54]) { c.moveTo(x + 10, 88); c.lineTo(x + 14, 91); c.lineTo(x + 8, 90); } });
+  // Cuerpo.
+  shape(p, scale(24, 48, 70, 80), (c) => c.ellipse(46, 64, 24, 14, 0, 0, Math.PI * 2));
+  shape(p, '#8a4a2a', (c) => c.ellipse(48, 70, 16, 6, 0, 0, Math.PI * 2), false);
+  // Cuello y cabeza.
+  shape(p, scale(56, 30, 80, 64), (c) => { c.moveTo(58, 60); c.quadraticCurveTo(62, 40, 74, 30); c.lineTo(80, 36); c.quadraticCurveTo(70, 46, 68, 62); c.closePath(); });
+  shape(p, scale(70, 22, 98, 42), (c) => { c.moveTo(70, 26); c.lineTo(92, 28); c.lineTo(98, 34); c.lineTo(88, 38); c.lineTo(94, 42); c.lineTo(78, 42); c.lineTo(70, 36); c.closePath(); });
+  shape(p, '#e8dcc0', (c) => { c.moveTo(74, 26); c.quadraticCurveTo(64, 16, 58, 18); c.quadraticCurveTo(66, 20, 72, 30); c.closePath(); c.moveTo(80, 26); c.quadraticCurveTo(76, 12, 70, 10); c.quadraticCurveTo(76, 16, 78, 28); c.closePath(); });
+  c.save();
+  c.shadowColor = '#ffb020';
+  c.shadowBlur = 10;
+  shape(p, '#ffd24a', (c) => c.ellipse(84, 31, 2.4, 1.4, 0, 0, Math.PI * 2), false);
+  shape(p, '#ff6a1a', (c) => { c.moveTo(90, 38); c.lineTo(99, 39); c.lineTo(92, 41); c.closePath(); }, false);
+  c.restore();
+  // Ala delantera.
+  shape(p, '#5a1a14', (c) => { c.moveTo(48, 52); c.lineTo(62, 2); c.lineTo(70, 18); c.lineTo(82, 12); c.lineTo(74, 34); c.lineTo(60, 48); c.closePath(); });
+  c.strokeStyle = '#1a0806';
+  c.lineWidth = 1.2;
+  c.beginPath(); c.moveTo(50, 50); c.lineTo(62, 4); c.moveTo(52, 50); c.lineTo(70, 18); c.moveTo(56, 48); c.lineTo(80, 14); c.stroke();
+  // Grietas de lava.
+  glowLine(p, '#ff7a1a', 8, (c) => { c.moveTo(30, 60); c.lineTo(38, 64); c.lineTo(34, 70); c.moveTo(50, 56); c.lineTo(56, 62); c.lineTo(52, 68); c.moveTo(62, 50); c.lineTo(66, 42); }, 1.6);
+}
+
+function drawColossus(p: Painter): void {
+  const { c } = p;
+  const stone = (x0: number, y0: number, x1: number, y1: number) => {
+    const g = c.createLinearGradient(x0, y0, x1, y1);
+    g.addColorStop(0, '#4a3a5e');
+    g.addColorStop(0.5, '#1f1728');
+    g.addColorStop(1, '#07050a');
+    return g;
+  };
+  const glow = '#b56bff';
+  shape(p, stone(34, 66, 66, 94), (c) => { c.roundRect(32, 66, 14, 24, 4); c.roundRect(54, 66, 14, 24, 4); });
+  shape(p, stone(18, 24, 82, 76), (c) => { c.moveTo(22, 40); c.quadraticCurveTo(50, 12, 78, 40); c.lineTo(72, 72); c.quadraticCurveTo(50, 80, 28, 72); c.closePath(); });
+  shape(p, stone(4, 34, 26, 84), (c) => c.ellipse(14, 58, 11, 18, 0.25, 0, Math.PI * 2));
+  shape(p, stone(74, 34, 98, 84), (c) => c.ellipse(86, 58, 11, 18, -0.25, 0, Math.PI * 2));
+  shape(p, stone(38, 8, 62, 34), (c) => { c.moveTo(38, 30); c.lineTo(42, 10); c.lineTo(50, 4); c.lineTo(58, 10); c.lineTo(62, 30); c.closePath(); });
+  glowLine(p, glow, 12, (c) => {
+    c.moveTo(34, 44); c.lineTo(44, 52); c.lineTo(38, 62);
+    c.moveTo(66, 44); c.lineTo(56, 54); c.lineTo(62, 64);
+    c.moveTo(50, 36); c.lineTo(50, 70); c.moveTo(10, 50); c.lineTo(18, 60); c.moveTo(90, 50); c.lineTo(82, 60);
+  }, 2);
+  orb(p, 50, 20, 5, glow);
+}
+
 const DRAW: Record<UnitType, (p: Painter) => void> = {
+  // Plantillas: comandantes y jefes se dibujan con drawCommander / drawDragon / drawColossus.
+  commander(p) { DRAW.guardian(p); },
+  boss(p) { drawColossus(p); },
   warrior(p) {
     cape(p);
     shape(p, metal(p, 28, 48, 44, 64), (c) => c.arc(35, 57, 8.5, 0, Math.PI * 2));

@@ -19,6 +19,7 @@
         <button id="tutorial-open" class="btn ghost small">❔ Tutorial</button>
         <button id="mute" class="btn ghost small">🔊 Sonido</button>
       </div>
+      <div id="hud" class="hud" aria-label="Recursos"></div>
     </header>
     <main>
       <section class="stage">
@@ -27,6 +28,8 @@
           <canvas id="board"></canvas>
           <div id="turn" class="turn" hidden></div>
           <div id="card-cast" class="card-cast"></div>
+          <div id="vs" class="vs" hidden></div>
+          <div id="banner" class="banner" hidden></div>
           <div id="result" class="result" hidden></div>
         </div>
         <div class="status" id="status">Elige una unidad y colócala en tu zona (columnas iluminadas).</div>
@@ -44,12 +47,17 @@
           <button data-tab="army" class="active">Ejército</button>
           <button data-tab="cards">Cartas</button>
           <button data-tab="armory">Armería</button>
+          <button data-tab="campaign">Campaña</button>
+          <button data-tab="market">Mercado Negro</button>
           <button data-tab="tournaments">Torneos</button>
         </nav>
 
         <section data-panel="army" class="panel">
           <div class="meter"><span>Oro</span><div class="bar"><i id="gold-bar"></i></div><strong id="gold"></strong></div>
           <div id="race-trait" class="trait"></div>
+          <h3>Comandante</h3>
+          <div id="commanders" class="commanders"></div>
+          <h3>Tropas</h3>
           <div id="palette" class="palette"></div>
         </section>
 
@@ -58,6 +66,7 @@
           <p class="muted">Hasta 3 cartas y 1 legendaria. Cada una se lanza sola al empezar el turno que elijas: el momento es tu estrategia.</p>
           <div id="deck" class="deck"></div>
           <h3>Colección</h3>
+          <div id="card-filters" class="chips"></div>
           <div id="collection" class="collection"></div>
           <p class="muted small">Las cartas se ganan jugando y son tuyas: se pueden vender o regalar como objetos del juego en la blockchain. En los torneos con premio en dinero todos usan el arsenal completo, para que el premio no se pueda comprar.</p>
         </section>
@@ -65,6 +74,14 @@
         <section data-panel="armory" class="panel" hidden>
           <p class="muted">Las armaduras son cosméticas: cambian cómo luce tu ejército, nunca sus estadísticas. Se ganan jugando y se pueden vender.</p>
           <div id="armors" class="armors"></div>
+        </section>
+
+        <section data-panel="campaign" class="panel" hidden>
+          <div id="campaign"></div>
+        </section>
+
+        <section data-panel="market" class="panel" hidden>
+          <div id="market"></div>
         </section>
 
         <section data-panel="tournaments" class="panel" hidden>

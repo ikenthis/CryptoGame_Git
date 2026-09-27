@@ -1,17 +1,25 @@
 import {
-  ARMORS, ARMOR_IDS, BUDGET, CARDS, CARD_TURN_MAX, DEPLOY_COLUMNS, ENERGY, MAX_CARDS, MAX_LEGENDARY_CARDS, MAX_UNITS,
-  PRESET_ARMIES, RACES, RACE_IDS, RARITIES, UNITS, UNIT_TYPES,
-  armyCost, cardEnergy, cardsForRace, simulate, statsFor, validateArmy,
-  type ArmorId, type Army, type BattleResult, type Card, type CardPlay, type Placement, type Race, type Side, type UnitType,
+  ARMORS, ARMOR_IDS, BOSSES, BUDGET, CARDS, CARD_TURN_MAX, CATEGORIES, COMMANDERS, DEPLOY_COLUMNS, ENERGY, MAX_CARDS,
+  MAX_LEGENDARY_CARDS, MAX_SUPPLIES, MAX_UNITS, MISSIONS, PRESET_ARMIES, RACES, RACE_IDS, RARITIES, RESOURCES, RESOURCE_IDS,
+  UNITS, UNIT_TYPES,
+  armyCost, cardEnergy, cardsForRace, commandersForRace, finishMission, missionById, missionUnlocked, ownsCard,
+  ownsCommander, rewardSummary, simulate, startMission, statsFor, validateArmy,
+  type ArmorId, type Army, type BattleArmy, type BattleResult, type Card, type CardCategory, type CardPlay,
+  type CommanderId, type CommanderPlacement, type Placement, type Race, type Side, type Special, type UnitType,
 } from '@gentium/engine';
 import { artUrl, loadArt } from './art/assets.ts';
 import { RACE_EMBLEM } from './art/icons.ts';
 import { getSprite } from './art/sprites.ts';
+import { RARITY_COLORS } from './art/theme.ts';
 import { sound } from './audio/sound.ts';
 import { initTelegram, type TelegramWebApp } from './platform/telegram.ts';
-import { RARITY_COLORS } from './art/theme.ts';
-import { Scene, type Look } from './scene/scene.ts';
+import { Scene, type BuildArmy, type Look } from './scene/scene.ts';
+import { getProfile, onProfile, rng, setProfile, today } from './state/profile.ts';
+import { renderCampaign } from './ui/campaign.ts';
 import { cardElement } from './ui/card.ts';
+import { commanderElement } from './ui/commander.ts';
+import { renderMarket } from './ui/market.ts';
+import { showLoot } from './ui/modal.ts';
 import { Tutorial, tutorialSeen } from './ui/tutorial.ts';
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -24,26 +32,48 @@ declare const __DEMO__: boolean;
 let race: Race = 'human';
 let armor: ArmorId = 'royal';
 let placements: Placement[] = [];
+let commander: CommanderPlacement | null = null;
+/** Comandante elegido para cada raza (se recuerda al cambiar de raza). */
+const chosenCommander: Partial<Record<Race, CommanderId>> = {};
 let deck: CardPlay[] = [];
-let selected: UnitType = 'warrior';
+let selected: UnitType | 'commander' = 'commander';
+let cardFilter: CardCategory | 'all' = 'all';
+/** Contra quién se juega: un rival de práctica o una misión de campaña. */
+let target: { kind: 'preset' | 'mission'; id: string } = { kind: 'preset', id: 'horde' };
 let battling = false;
 const SPEEDS = [1, 2, 4];
+let speedIndex = 0;
 /** Presente solo cuando el juego se abre como Mini App de Telegram. */
 let tg: TelegramWebApp | null = null;
 /** Sesión verificada por el servidor (hoy, vía Telegram). */
 let session: { token: string; playerId: string; name: string } | null = null;
-let speedIndex = 0;
 
 const scene = new Scene($<HTMLCanvasElement>('board'));
 const statusEl = $('status');
 const opponentSelect = $<HTMLSelectElement>('opponent');
 
-const currentArmy = (): Army => ({ race, armor, units: placements, cards: deck });
+const commanderId = (): CommanderId | null => {
+  const chosen = chosenCommander[race];
+  if (chosen && ownsCommander(getProfile(), chosen)) return chosen;
+  return commandersForRace(race).find((c) => ownsCommander(getProfile(), c.id))?.id ?? null;
+};
+const currentArmy = (): Army => ({
+  race, armor, units: placements, cards: deck, ...(commander ? { commander } : {}),
+});
 const look = (): Look => ({ race, armor });
 
 function setStatus(text: string, tone: '' | 'win' | 'loss' = ''): void {
   statusEl.textContent = text;
   statusEl.className = `status ${tone}`;
+}
+
+function enemyArmy(): { army: BattleArmy; name: string } {
+  if (target.kind === 'mission') {
+    const m = missionById(target.id);
+    return { army: m.enemy, name: m.name };
+  }
+  const preset = PRESET_ARMIES[target.id];
+  return { army: preset.army, name: preset.name };
 }
 
 // ---------- Tablero ----------
@@ -59,26 +89,44 @@ canvas.addEventListener('click', (ev) => {
   const cell = scene.cellAt(ev.clientX, ev.clientY);
   if (!cell) return;
   if (cell.x >= DEPLOY_COLUMNS) return setStatus('Solo puedes desplegar en tu zona (columnas iluminadas).');
-  const existing = placements.findIndex((p) => p.x === cell.x && p.y === cell.y);
-  if (existing >= 0) {
-    placements.splice(existing, 1);
+  const unitAt = placements.findIndex((p) => p.x === cell.x && p.y === cell.y);
+  const commanderAt = commander && commander.x === cell.x && commander.y === cell.y;
+  if (commanderAt) {
+    commander = null;
     sound.play('remove');
+    setStatus('Comandante retirado. Elígelo de nuevo para colocarlo.');
+  } else if (unitAt >= 0) {
+    placements.splice(unitAt, 1);
+    sound.play('remove');
+  } else if (selected === 'commander') {
+    const id = commanderId();
+    if (!id) return setStatus('No tienes ningún comandante de esta raza. Consíguelo en el Mercado Negro.');
+    commander = { id, x: cell.x, y: cell.y };
+    sound.play('legendary', 0.4);
+    selected = 'warrior';
+    setStatus(`${COMMANDERS[id].name} toma el mando. Ahora coloca tus tropas.`);
+    renderAll();
+    return;
   } else if (placements.length >= MAX_UNITS) return setStatus(`Máximo ${MAX_UNITS} unidades.`);
   else if (armyCost({ units: placements }) + UNITS[selected].cost > BUDGET) return setStatus('No te alcanza el oro.');
   else {
     placements.push({ type: selected, x: cell.x, y: cell.y });
     sound.play('place');
+    setStatus('Clic sobre una unidad para retirarla.');
   }
-  setStatus('Clic sobre una unidad para retirarla.');
   refresh();
 });
 
 function refreshScene(): void {
   if (battling) return;
-  const preset = PRESET_ARMIES[opponentSelect.value];
-  scene.ghost = { type: selected, look: look() };
-  scene.setBuild(placements, look(), preset && {
-    units: preset.army.units, look: { race: preset.army.race, armor: preset.army.armor ?? 'iron' },
+  const id = commanderId();
+  const ghostSpecial: Special | undefined = selected === 'commander' && id ? { kind: 'commander', id } : undefined;
+  scene.ghost = { type: selected, look: look(), ...(ghostSpecial ? { special: ghostSpecial } : {}) };
+  const enemy = enemyArmy().army;
+  const mine: BuildArmy = { units: placements, commander, look: look() };
+  scene.setBuild(mine, {
+    units: enemy.units, commander: enemy.commander ?? null, bosses: enemy.bosses,
+    look: { race: enemy.race, armor: enemy.armor ?? 'iron' },
   });
 }
 
@@ -96,9 +144,12 @@ function renderRaces(): void {
     b.className = `race race-${id}${id === race ? ' active' : ''}`;
     b.innerHTML = `${raceBadge(id)}<span><strong>${RACES[id].name}</strong><small>${RACES[id].realm}</small></span>`;
     b.onclick = () => {
-      if (battling) return;
+      if (battling || id === race) return;
       race = id;
       deck = deck.filter((c) => CARDS[c.card].race === null || CARDS[c.card].race === race);
+      // El comandante es de una raza concreta: se cambia por el de la nueva raza en la misma casilla.
+      const next = commanderId();
+      commander = commander && next ? { ...commander, id: next } : null;
       renderAll();
     };
     return b;
@@ -107,7 +158,7 @@ function renderRaces(): void {
   $('race-trait').innerHTML = `${raceBadge(race)}<div><strong>${info.realm}</strong> · <em>${info.trait}</em><br>${info.description}</div>`;
 }
 
-// ---------- Unidades ----------
+// ---------- Comandante y unidades ----------
 
 function spriteCanvas(type: UnitType, r: Race, a: ArmorId, size: number): HTMLCanvasElement {
   const c = document.createElement('canvas');
@@ -118,10 +169,32 @@ function spriteCanvas(type: UnitType, r: Race, a: ArmorId, size: number): HTMLCa
   return c;
 }
 
+function renderCommanders(): void {
+  const profile = getProfile();
+  const active = commanderId();
+  $('commanders').replaceChildren(...commandersForRace(race).map((def) => {
+    const owned = ownsCommander(profile, def.id);
+    const el = commanderElement(def, 'mini', owned);
+    el.classList.toggle('selected', def.id === active);
+    if (def.id === active && commander) el.classList.add('placed');
+    el.onclick = () => {
+      if (battling) return;
+      if (!owned) return setStatus(`${def.name} aún no es tuyo: consíguelo en sobres de comandante o en la campaña.`);
+      chosenCommander[race] = def.id;
+      if (commander) commander = { ...commander, id: def.id };
+      selected = 'commander';
+      setStatus(commander ? `${def.name} está al mando.` : `Haz clic en tu zona para colocar a ${def.name}.`);
+      renderAll();
+    };
+    return el;
+  }));
+}
+
 function renderPalette(): void {
   $('palette').replaceChildren(...UNIT_TYPES.map((type) => {
     const base = UNITS[type];
-    const s = statsFor(type, race);
+    const passive = commander ? COMMANDERS[commander.id].passive.mods[type] ?? {} : {};
+    const s = statsFor(type, race, passive);
     const stat = (icon: string, v: number, b: number) =>
       `<span class="${v > b ? 'up' : v < b ? 'down' : ''}">${icon}${v}</span>`;
     const b = document.createElement('button');
@@ -144,6 +217,7 @@ function renderPalette(): void {
 // ---------- Cartas ----------
 
 function cardBlocker(card: Card): string | null {
+  if (!ownsCard(getProfile(), card.id)) return 'Aún no la tienes: consíguela en la Campaña o en el Mercado Negro.';
   if (deck.some((c) => c.card === card.id)) return 'Ya está en tu mazo.';
   if (deck.length >= MAX_CARDS) return `Máximo ${MAX_CARDS} cartas.`;
   if (card.rarity === 'legendary' && deck.filter((c) => CARDS[c.card].rarity === 'legendary').length >= MAX_LEGENDARY_CARDS) {
@@ -154,6 +228,7 @@ function cardBlocker(card: Card): string | null {
 }
 
 function renderDeck(): void {
+  const profile = getProfile();
   const slots: HTMLElement[] = [];
   for (let i = 0; i < MAX_CARDS; i++) {
     const play = deck[i];
@@ -179,13 +254,27 @@ function renderDeck(): void {
     slots.push(slot);
   }
   $('deck').replaceChildren(...slots);
-  $('collection').replaceChildren(...cardsForRace(race).map((card) => {
+
+  $('card-filters').replaceChildren(...(['all', ...Object.keys(CATEGORIES)] as Array<CardCategory | 'all'>).map((cat) => {
+    const chip = document.createElement('button');
+    chip.className = `chip${cat === cardFilter ? ' active' : ''}`;
+    chip.textContent = cat === 'all' ? 'Todas' : CATEGORIES[cat];
+    chip.onclick = () => { cardFilter = cat; renderDeck(); };
+    return chip;
+  }));
+
+  const cards = cardsForRace(race).filter((c) => cardFilter === 'all' || c.category === cardFilter);
+  $('collection').replaceChildren(...cards.map((card) => {
     const el = cardElement(card, 'mini');
+    const count = profile.cards[card.id] ?? 0;
+    const badge = document.createElement('span');
+    badge.className = 'count';
+    badge.textContent = count ? `×${count}` : '🔒';
+    el.append(badge);
     const blocker = cardBlocker(card);
-    if (blocker) {
-      el.classList.add('disabled');
-      el.title = blocker;
-    }
+    if (!count) el.classList.add('locked');
+    else if (blocker) el.classList.add('disabled');
+    el.title = blocker ?? `${card.name}: ${card.text}`;
     el.onclick = () => {
       if (battling) return;
       const why = cardBlocker(card);
@@ -219,6 +308,58 @@ function renderArmors(): void {
   }));
 }
 
+// ---------- Recursos, campaña y mercado ----------
+
+function renderHud(): void {
+  const r = getProfile().resources;
+  $('hud').innerHTML = RESOURCE_IDS.map((id) => {
+    const value = id === 'supplies' ? `${r.supplies}/${MAX_SUPPLIES}` : r[id];
+    return `<span class="res res-${id}" title="${RESOURCES[id].name}">${RESOURCES[id].icon} <b>${value}</b></span>`;
+  }).join('');
+}
+
+function prepareMission(id: string): void {
+  if (battling) stopBattle();
+  target = { kind: 'mission', id };
+  renderOpponents();
+  const m = missionById(id);
+  setStatus(`${m.kind === 'raid' ? 'Incursión' : 'Misión'}: ${m.name}. Despliega tu ejército y pulsa ¡A la batalla! (🍖 ${m.cost}).`);
+  renderAll();
+  document.querySelector('.board-wrap')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+
+function renderSidePanels(): void {
+  const profile = getProfile();
+  renderCampaign($('campaign'), { profile, selected: target.kind === 'mission' ? target.id : null, onPrepare: prepareMission });
+  renderMarket($('market'), {
+    profile, setProfile, rng, day: today(),
+    onLoot: (view) => { sound.play(view.commanders?.length || view.cards?.some((c) => CARDS[c].rarity === 'legendary') ? 'legendary' : 'card'); showLoot(view); },
+    onError: (message) => setStatus(message, 'loss'),
+  });
+}
+
+function renderOpponents(): void {
+  const profile = getProfile();
+  const practice = document.createElement('optgroup');
+  practice.label = 'Práctica (sin coste)';
+  for (const [id, p] of Object.entries(PRESET_ARMIES)) practice.append(new Option(`${p.name} (${RACES[p.army.race].name})`, `preset:${id}`));
+  const campaign = document.createElement('optgroup');
+  campaign.label = 'Campaña e incursiones';
+  for (const m of MISSIONS) {
+    if (!missionUnlocked(profile, m)) continue;
+    campaign.append(new Option(`${m.kind === 'raid' ? '☠ ' : ''}${m.name} (🍖 ${m.cost})`, `mission:${m.id}`));
+  }
+  opponentSelect.replaceChildren(practice, campaign);
+  opponentSelect.value = `${target.kind}:${target.id}`;
+}
+
+opponentSelect.onchange = () => {
+  const [kind, id] = opponentSelect.value.split(':') as ['preset' | 'mission', string];
+  target = { kind, id };
+  renderSidePanels();
+  refreshScene();
+};
+
 // ---------- Contadores ----------
 
 function refresh(): void {
@@ -229,7 +370,7 @@ function refresh(): void {
   $('energy').textContent = `${ENERGY - energy} / ${ENERGY}`;
   $('energy-bar').style.width = `${(100 * (ENERGY - energy)) / ENERGY}%`;
   $<HTMLButtonElement>('simulate').disabled = placements.length === 0 || battling;
-  $<HTMLButtonElement>('submit').disabled = placements.length === 0;
+  $<HTMLButtonElement>('submit').disabled = placements.length === 0 || !commander;
   $('edit').hidden = !battling;
   $('speed').hidden = !battling;
   $('skip').hidden = !battling;
@@ -238,22 +379,69 @@ function refresh(): void {
 }
 
 function renderAll(): void {
+  renderHud();
   renderRaces();
+  renderCommanders();
   renderPalette();
   renderDeck();
   renderArmors();
+  renderSidePanels();
   refresh();
 }
+
+onProfile(() => {
+  renderHud();
+  renderCommanders();
+  renderDeck();
+  renderSidePanels();
+});
 
 // ---------- Batalla ----------
 
 const castBox = $('card-cast');
 const turnBox = $('turn');
 const resultBox = $('result');
+const vsBox = $('vs');
+const bannerBox = $('banner');
 let replayLabels: [string, string] = ['Tú', 'Rival'];
 let replaySide: Side = 0;
+let battleArmies: [BattleArmy, BattleArmy] | null = null;
+
+function leaderName(army: BattleArmy): string {
+  if (army.bosses?.length) return BOSSES[army.bosses[0].id].name;
+  return army.commander ? COMMANDERS[army.commander.id].name : RACES[army.race].name;
+}
+
+function showBanner(html: string, tone: 'ally' | 'enemy' | 'doom'): void {
+  bannerBox.className = `banner ${tone}`;
+  bannerBox.innerHTML = html;
+  bannerBox.hidden = false;
+}
 
 scene.hooks = {
+  onIntro: () => {
+    if (!battleArmies) return;
+    const [a, b] = battleArmies;
+    const side = (army: BattleArmy, label: string, cls: string) => `
+      <div class="vs-side ${cls}">
+        <span class="vs-emblem">${RACE_EMBLEM[army.race]}</span>
+        <strong>${leaderName(army)}</strong>
+        <small>${label}</small>
+      </div>`;
+    vsBox.innerHTML = `${side(a, replayLabels[0], 'left')}<div class="vs-mark">VS</div>${side(b, replayLabels[1], 'right')}`;
+    vsBox.hidden = false;
+    setTimeout(() => { vsBox.hidden = true; }, 1500 / Math.max(1, scene.speed));
+  },
+  onAbility: (side, caster, name, fizzled) => {
+    const who = caster?.kind === 'commander' ? `${COMMANDERS[caster.id].name}, ${COMMANDERS[caster.id].title}`
+      : caster?.kind === 'boss' ? `${BOSSES[caster.id].name}, ${BOSSES[caster.id].title}` : replayLabels[side];
+    const tone = caster?.kind === 'boss' ? 'doom' : side === replaySide ? 'ally' : 'enemy';
+    showBanner(`<small>${who}</small><strong>${name}</strong>${fizzled ? '<small>Sin efecto</small>' : ''}`, tone);
+  },
+  onAbilityEnd: () => { bannerBox.hidden = true; },
+  onMorale: (side) => {
+    showBanner(`<small>${replayLabels[side]}</small><strong>¡Ha caído el comandante!</strong><small>Sus tropas pierden 1 de ataque</small>`, side === replaySide ? 'enemy' : 'ally');
+  },
   onTurn: (turn) => {
     sound.play('turn', 0.6);
     turnBox.hidden = false;
@@ -285,18 +473,23 @@ scene.hooks = {
 };
 
 let lastResult: BattleResult | null = null;
+/** Misión en curso: sus recompensas se entregan al terminar la animación. */
+let pendingMission: string | null = null;
 
-function playBattle(result: BattleResult, looks: [Look, Look], mySide: Side, labels: [string, string]): void {
+function playBattle(result: BattleResult, armies: [BattleArmy, BattleArmy], mySide: Side, labels: [string, string]): void {
   battling = true;
   lastResult = result;
+  battleArmies = armies;
   replayLabels = labels;
   replaySide = mySide;
   resultBox.hidden = true;
+  bannerBox.hidden = true;
   castBox.replaceChildren();
   scene.hover = null;
   scene.ghost = null;
   scene.speed = SPEEDS[speedIndex];
-  scene.play(result, looks, mySide);
+  const lookOf = (a: BattleArmy): Look => ({ race: a.race, armor: a.armor ?? 'iron' });
+  scene.play(result, [lookOf(armies[0]), lookOf(armies[1])], mySide);
   sound.setMusic('battle');
   setStatus(`${labels[mySide]} (azul) contra ${labels[mySide === 0 ? 1 : 0]} (rojo)`);
   refresh();
@@ -307,6 +500,7 @@ function finishBattle(): void {
   if (!r) return;
   battlesFinished++;
   castBox.replaceChildren();
+  bannerBox.hidden = true;
   turnBox.hidden = true;
   const why = r.reason === 'timeout' ? 'por puntos al agotar los turnos' : `en ${r.turns} turnos`;
   const [title, tone] = r.winner === null ? ['Empate', ''] : r.winner === replaySide ? ['¡Victoria!', 'win'] : ['Derrota', 'loss'];
@@ -317,6 +511,22 @@ function finishBattle(): void {
   if (r.winner !== null) sound.play(r.winner === replaySide ? 'victory' : 'defeat');
   tg?.HapticFeedback?.notificationOccurred(r.winner === replaySide ? 'success' : r.winner === null ? 'warning' : 'error');
   setStatus(r.winner === null ? 'Empate.' : `${replayLabels[r.winner]} gana ${why}.`, (tone || '') as '' | 'win' | 'loss');
+
+  if (pendingMission) {
+    const id = pendingMission;
+    pendingMission = null;
+    const outcome = finishMission(getProfile(), id, r);
+    setProfile(outcome.profile);
+    const m = missionById(id);
+    const subtitle = m.kind === 'raid'
+      ? `Daño al jefe: ${outcome.damagePct}%${outcome.won ? ' · ¡Jefe derrotado!' : ''}`
+      : outcome.won ? '¡Victoria! Tu ejército vuelve cargado de botín.' : 'Derrota. Tus exploradores rescatan algo de oro.';
+    setTimeout(() => showLoot({
+      title: m.name, subtitle, lines: rewardSummary(outcome.reward),
+      cards: outcome.reward.cards, commanders: outcome.reward.commanders,
+    }), 900);
+    renderOpponents();
+  }
 }
 
 function stopBattle(): void {
@@ -324,22 +534,29 @@ function stopBattle(): void {
   battling = false;
   resultBox.hidden = true;
   turnBox.hidden = true;
+  bannerBox.hidden = true;
+  vsBox.hidden = true;
   castBox.replaceChildren();
   refresh();
 }
 
-opponentSelect.replaceChildren(...Object.entries(PRESET_ARMIES).map(([id, p]) => new Option(`${p.name} (${RACES[p.army.race].name})`, id)));
-opponentSelect.onchange = () => refreshScene();
-
 $('simulate').onclick = () => {
   const check = validateArmy(currentArmy());
   if (!check.ok) return setStatus(check.error);
-  const preset = PRESET_ARMIES[opponentSelect.value];
-  // La práctica se simula en el navegador con el mismo motor que usa el servidor.
-  playBattle(simulate(check.army, preset.army), [look(), { race: preset.army.race, armor: preset.army.armor ?? 'iron' }], 0, ['Tu ejército', preset.name]);
+  const { army: enemy, name } = enemyArmy();
+  if (target.kind === 'mission') {
+    try {
+      setProfile(startMission(getProfile(), target.id, Date.now()));
+    } catch (err) {
+      return setStatus((err as Error).message, 'loss');
+    }
+    pendingMission = target.id;
+  }
+  // Se simula en el navegador con el mismo motor que usa el servidor.
+  playBattle(simulate(check.army, enemy), [check.army, enemy], 0, ['Tu ejército', name]);
 };
 $('edit').onclick = () => { stopBattle(); setStatus('Ajusta tu ejército y vuelve a la batalla.'); };
-$('clear').onclick = () => { stopBattle(); placements = []; deck = []; renderAll(); };
+$('clear').onclick = () => { stopBattle(); placements = []; deck = []; commander = null; renderAll(); };
 $('skip').onclick = () => scene.skip();
 $('speed').onclick = () => {
   speedIndex = (speedIndex + 1) % SPEEDS.length;
@@ -350,7 +567,7 @@ resultBox.onclick = () => { resultBox.hidden = true; };
 
 // ---------- Pestañas ----------
 
-type Tab = 'army' | 'cards' | 'armory' | 'tournaments';
+type Tab = 'army' | 'cards' | 'armory' | 'campaign' | 'market' | 'tournaments';
 
 function openTab(name: Tab): void {
   for (const t of $('tabs').querySelectorAll<HTMLButtonElement>('button')) t.classList.toggle('active', t.dataset.tab === name);
@@ -442,7 +659,6 @@ async function showStandings(id: string, container: HTMLElement): Promise<void> 
   const t = await api<TournamentView>(`/api/tournaments/${id}`);
   if (!t.result) return;
   const armies = new Map((t.entries ?? []).map((e) => [e.playerId, e.army]));
-  const lookOf = (player: string): Look => ({ race: armies.get(player)?.race ?? 'human', armor: armies.get(player)?.armor ?? 'iron' });
   const prize = new Map(t.result.plan.payouts.map((p) => [p.id, p.amount]));
   const table = document.createElement('table');
   table.innerHTML = '<tr><th>#</th><th>Jugador</th><th>Raza</th><th class="num">Pts</th><th class="num">Premio</th></tr>';
@@ -454,9 +670,11 @@ async function showStandings(id: string, container: HTMLElement): Promise<void> 
     tr.onclick = async () => {
       const leader = t.result!.standings[0].id;
       const rival = s.id === leader ? t.result!.standings[1]?.id : leader;
-      if (!rival) return;
+      const a = armies.get(s.id);
+      const b = rival ? armies.get(rival) : undefined;
+      if (!rival || !a || !b) return;
       const result = await api<BattleResult>(`/api/tournaments/${id}/replay?left=${encodeURIComponent(s.id)}&right=${encodeURIComponent(rival)}`);
-      playBattle(result, [lookOf(s.id), lookOf(rival)], 0, [s.id, rival]);
+      playBattle(result, [a, b], 0, [s.id, rival]);
     };
   }
   container.append(table);
@@ -490,7 +708,7 @@ let battlesFinished = 0;
 const tutorial = new Tutorial([
   {
     title: '¡Bienvenido a Bellum Gentium!',
-    text: 'En un minuto ganarás tu primera batalla. Armas un ejército, lo colocas, eliges cartas… y la batalla se resuelve sola, sin azar: gana la mejor estrategia.',
+    text: 'En un minuto ganarás tu primera batalla. Eliges un comandante, armas tu ejército, preparas cartas… y la batalla se resuelve sola, sin azar: gana la mejor estrategia.',
     next: 'Empezar',
   },
   {
@@ -499,22 +717,23 @@ const tutorial = new Tutorial([
     text: 'Cada raza cambia a tus unidades y tiene su propia carta legendaria. Los Orcos son brutales; los Enanos, un muro de hierro.',
   },
   {
-    target: '#palette',
-    title: 'Tus unidades',
+    target: '#commanders',
+    title: 'Tu comandante',
     onEnter: () => openTab('army'),
-    text: 'El número dorado es su coste: tienes 12 de oro. Los valores en verde o rojo son las ventajas y desventajas de tu raza.',
+    text: 'Todo ejército necesita un líder. Su pasiva mejora a tus tropas y su habilidad se dispara sola en batalla. Si cae, tus tropas pierden moral. Toca uno y colócalo en el tablero.',
+    done: () => commander !== null,
   },
   {
     target: '.board-wrap',
-    title: 'Despliega tu ejército',
-    text: 'Elige una unidad y haz clic en las columnas iluminadas. Coloca al menos 3: las resistentes delante (a la derecha) y las de distancia detrás.',
+    title: 'Despliega tus tropas',
+    text: 'Elige unidades y haz clic en las columnas iluminadas. Coloca al menos 3: las resistentes delante (a la derecha) y las de distancia detrás, protegiendo a tu comandante.',
     done: () => placements.length >= 3,
   },
   {
     target: '[data-panel="cards"]',
     title: 'Prepara una carta',
     onEnter: () => openTab('cards'),
-    text: 'Añade una carta de la colección y elige en qué turno se lanza. El momento importa: una curación en el turno 1 no cura a nadie.',
+    text: 'Hay cartas de ataque, defensa, efecto, curación e invocación. Añade una y elige en qué turno se lanza: el momento importa.',
     done: () => deck.length >= 1,
   },
   {
@@ -530,9 +749,9 @@ const tutorial = new Tutorial([
     done: () => battlesFinished > 0,
   },
   {
-    target: '[data-tab="tournaments"]',
-    title: 'Compite de verdad',
-    text: 'Cuando estés listo, inscríbete gratis en la Arena diaria: tu ejército queda oculto y se enfrenta a todos los demás. Los mejores ganan premios.',
+    target: '[data-tab="campaign"]',
+    title: 'Campaña y Mercado Negro',
+    text: 'En la Campaña y las incursiones contra jefes ganas materiales y Fichas Extrañas. En el Mercado Negro las cambias por sobres, transmutas cartas y tratas con el Mercader.',
   },
 ]);
 $('tutorial-open').onclick = () => {
@@ -586,6 +805,7 @@ if (__DEMO__) {
     </div>`);
 }
 
+renderOpponents();
 renderAll();
 if (!tutorialSeen()) tutorial.start();
 // Las ilustraciones generadas se cargan aparte; al llegar, se vuelve a pintar.

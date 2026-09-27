@@ -13,14 +13,26 @@
          las armaduras de una unidad (?mode=armors&type=knight). -->
     <strong>Galería de sprites</strong> ·
     <a style="color:#e8c164" href="?armor=royal">Razas</a> ·
-    <a style="color:#e8c164" href="?mode=armors&type=guardian">Armaduras</a>
+    <a style="color:#e8c164" href="?mode=armors&type=guardian">Armaduras</a> ·
+    <a style="color:#e8c164" href="?mode=specials">Comandantes y jefes</a>
     <canvas id="c"></canvas>
     <script type="module">
       import { getSprite } from '/src/art/sprites.ts';
+      import { COMMANDERS } from '@gentium/engine';
       const races = ['human', 'elf', 'orc', 'undead', 'dwarf'];
       const types = ['warrior', 'archer', 'knight', 'guardian', 'mage', 'healer', 'golem'];
       const armors = ['iron', 'steel', 'runic', 'royal', 'eclipse'];
       const params = new URLSearchParams(location.search);
+      if (params.get('mode') === 'specials') {
+        const S2 = 150;
+        const c2 = document.getElementById('c');
+        const ids = Object.keys(COMMANDERS);
+        c2.width = 5 * S2; c2.height = 3 * S2;
+        const x2 = c2.getContext('2d');
+        ids.forEach((id, i) => x2.drawImage(getSprite('commander', COMMANDERS[id].race, 'royal', 1, false, id), (i % 5) * S2, Math.floor(i / 5) * S2, S2, S2));
+        x2.drawImage(getSprite('boss', 'orc', 'iron', -1, false, 'ash-dragon'), 0, 2 * S2, S2, S2);
+        x2.drawImage(getSprite('boss', 'orc', 'iron', -1, false, 'void-colossus'), S2, 2 * S2, S2, S2);
+      } else {
       const byArmor = params.get('mode') === 'armors';
       const cols = byArmor ? armors : types;
       const S = 130;
@@ -34,6 +46,7 @@
           : getSprite(col, race, params.get('armor') || 'royal', 1);
         x.drawImage(sprite, i * S, j * S, S, S);
       }));
+      }
     </script>
   </body>
 </html>

@@ -1,10 +1,10 @@
 import {
-  BOARD_HEIGHT, BOARD_WIDTH, CARDS, DEPLOY_COLUMNS, UNITS,
-  type ArmorId, type BattleEvent, type BattleResult, type CardId, type Placement, type Race, type Side,
-  type StatusEffect, type UnitState, type UnitType,
+  BOARD_HEIGHT, BOARD_WIDTH, BOSSES, CARDS, COMMANDERS, DEPLOY_COLUMNS, UNITS,
+  type ArmorId, type BattleArmy, type BattleEvent, type BattleResult, type CardId, type CommanderPlacement, type Placement,
+  type Race, type Side, type Special, type StatusEffect, type UnitState, type UnitType,
 } from '@gentium/engine';
 import type { Sfx } from '../audio/sound.ts';
-import { getSprite } from '../art/sprites.ts';
+import { spriteFor } from '../art/sprites.ts';
 import { ARMOR_ART, RACE_ART, RARITY_COLORS, STATUS_COLORS, TEAM_COLORS } from '../art/theme.ts';
 
 // Escenario del tablero: dibuja el campo, las unidades y reproduce una batalla
@@ -21,7 +21,22 @@ export interface Look {
   armor: ArmorId;
 }
 
+/** Ejército a mostrar en el modo edición. */
+export interface BuildArmy {
+  units: Placement[];
+  commander?: CommanderPlacement | null;
+  bosses?: BattleArmy['bosses'];
+  look: Look;
+}
+
 export interface SceneHooks {
+  /** Presentación del enfrentamiento antes del primer turno. */
+  onIntro?: () => void;
+  /** Habilidad de comandante o ataque especial de jefe. */
+  onAbility?: (side: Side, caster: Special | undefined, name: string, fizzled: boolean) => void;
+  onAbilityEnd?: () => void;
+  /** Ha caído el comandante de `side`. */
+  onMorale?: (side: Side) => void;
   onTurn?: (turn: number) => void;
   onCard?: (side: Side, card: CardId, fizzled: boolean) => void;
   onCardEnd?: () => void;
@@ -46,6 +61,8 @@ interface DUnit {
   scale: number;
   status: StatusEffect[];
   phase: number;
+  shield: number;
+  special?: Special;
 }
 
 interface Anim {
@@ -57,6 +74,8 @@ interface Anim {
   onUpdate?: (p: number) => void;
   onEnd?: () => void;
   draw?: (c: CanvasRenderingContext2D, p: number) => void;
+  /** Golpe final: cámara lenta y zoom sobre `focus`. */
+  slow?: { focus: () => { x: number; y: number } };
 }
 
 interface Particle {
@@ -78,11 +97,38 @@ interface Spec {
   draw?: (c: CanvasRenderingContext2D, p: number) => void;
 }
 
+/** Contexto compartido entre los eventos de un turno. */
+interface TurnCtx {
+  chainFrom: { x: number; y: number } | null;
+  caster: number | null;
+}
+
 const px = (x: number) => PAD + x * CELL + CELL / 2;
 const py = (y: number) => PAD + y * CELL + CELL / 2;
 const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
 const ease = (t: number) => 1 - (1 - t) * (1 - t);
-const STAT_LABEL = { attack: 'ATQ', armor: 'ARM', speed: 'VEL' } as const;
+const STAT_LABEL = { attack: 'ATQ', armor: 'ARM', speed: 'VEL', thorns: 'ESPINAS' } as const;
+const INTRO_MS = 1700;
+
+/** Escala de dibujo según el tipo de unidad. */
+function sizeOf(u: { type: UnitType }): number {
+  return u.type === 'boss' ? 1.9 : u.type === 'golem' ? 1.25 : u.type === 'commander' ? 1.14 : 1;
+}
+
+/** Alcance real (los comandantes y jefes tienen el suyo). */
+function rangeOf(u: { type: UnitType; special?: Special }): number {
+  if (u.special?.kind === 'commander') return COMMANDERS[u.special.id].stats.range;
+  if (u.special?.kind === 'boss') return BOSSES[u.special.id].stats.range;
+  return UNITS[u.type].range;
+}
+
+/** Tipo visual para elegir proyectiles y sonidos. */
+function visualType(u: { type: UnitType; special?: Special } | undefined): UnitType | 'dragon' | 'colossus' {
+  if (!u) return 'warrior';
+  if (u.special?.kind === 'commander') return COMMANDERS[u.special.id].archetype;
+  if (u.special?.kind === 'boss') return BOSSES[u.special.id].look;
+  return u.type;
+}
 
 export class Scene {
   readonly canvas: HTMLCanvasElement;
@@ -100,11 +146,13 @@ export class Scene {
   private clock = 0;
   private shake = 0;
   private flash = { alpha: 0, color: '#fff' };
+  private cam = { zoom: 1, x: VIEW_W / 2, y: VIEW_H / 2 };
+  private introAt = -1;
   mode: 'build' | 'battle' = 'build';
   playing = false;
   speed = 1;
   hover: { x: number; y: number } | null = null;
-  ghost: { type: UnitType; look: Look } | null = null;
+  ghost: { type: UnitType; look: Look; special?: Special } | null = null;
   hooks: SceneHooks = {};
 
   constructor(canvas: HTMLCanvasElement) {
@@ -133,25 +181,31 @@ export class Scene {
 
   // ---------- Modo edición ----------
 
-  setBuild(mine: Placement[], look: Look, enemy?: { units: Placement[]; look: Look }): void {
+  setBuild(mine: BuildArmy, enemy?: BuildArmy): void {
     this.mode = 'build';
     this.playing = false;
     this.anims = [];
     this.mySide = 0;
-    this.looks = [look, enemy?.look ?? look];
+    this.cam = { zoom: 1, x: VIEW_W / 2, y: VIEW_H / 2 };
+    this.looks = [mine.look, enemy?.look ?? mine.look];
     const next = new Map<number, DUnit>();
-    const add = (side: Side, p: Placement, id: number) => {
-      const x = side === 0 ? p.x : BOARD_WIDTH - 1 - p.x;
-      const prev = [...this.units.values()].find((u) => u.side === side && u.x === x && u.y === p.y && u.type === p.type);
-      const hp = UNITS[p.type].hp;
-      next.set(id, {
-        ...(prev ?? this.newUnit({ id, side, type: p.type, x, y: p.y, hp, maxHp: hp, status: [] })),
-        id, look: this.looks[side], alpha: side === 0 ? 1 : 0.8,
-      });
+    const add = (side: Side, id: number, type: UnitType, px0: number, y: number, maxHp: number, special?: Special) => {
+      const x = side === 0 ? px0 : BOARD_WIDTH - 1 - px0;
+      const same = (u: DUnit) => u.side === side && u.x === x && u.y === y && u.type === type && u.special?.id === special?.id;
+      const prev = [...this.units.values()].find(same);
+      const unit = prev ?? this.newUnit({ id, side, type, x, y, hp: maxHp, maxHp, shield: 0, status: [], ...(special ? { special } : {}) });
+      next.set(id, { ...unit, id, look: this.looks[side], alpha: side === 0 ? 1 : 0.85 });
+      if (!prev) this.sparkle(next.get(id)!);
     };
-    mine.forEach((p, i) => add(0, p, i));
-    enemy?.units.forEach((p, i) => add(1, p, 100 + i));
-    for (const u of next.values()) if (![...this.units.values()].some((o) => o.id === u.id && o.type === u.type)) this.sparkle(u);
+    for (const [side, army, base] of [[0, mine, 0], [1, enemy, 100]] as const) {
+      if (!army) continue;
+      army.units.forEach((p, i) => add(side, base + i, p.type, p.x, p.y, UNITS[p.type].hp));
+      if (army.commander) {
+        const def = COMMANDERS[army.commander.id];
+        add(side, base + 50, 'commander', army.commander.x, army.commander.y, def.stats.hp, { kind: 'commander', id: def.id });
+      }
+      (army.bosses ?? []).forEach((b, i) => add(side, base + 60 + i, 'boss', b.x, b.y, BOSSES[b.id].stats.hp, { kind: 'boss', id: b.id }));
+    }
     this.units = next;
   }
 
@@ -166,18 +220,42 @@ export class Scene {
     this.particles = [];
     this.floaters = [];
     this.anims = [];
-    let t = 500;
+    this.cam = { zoom: 1, x: VIEW_W / 2, y: VIEW_H / 2 };
+    // Presentación: los ejércitos entran desde los flancos y aparece el «VS».
+    this.anims.push({
+      start: 0, duration: INTRO_MS - 200,
+      onStart: () => { this.introAt = 0; this.hooks.onIntro?.(); this.sfx('legendary', 0.5); },
+      onUpdate: (p) => {
+        const k = 1 - ease(Math.min(1, p * 1.4));
+        for (const u of this.units.values()) {
+          u.offX = (u.side === 0 ? -1 : 1) * k * CELL * 4;
+          u.alpha = 1 - k * 0.8;
+        }
+      },
+      onEnd: () => {
+        for (const u of this.units.values()) { u.offX = 0; u.alpha = 1; }
+        this.shake = 10;
+        this.sfx('heavy', 0.8);
+      },
+    });
+    // El último golpe de la batalla se ve a cámara lenta.
+    const lastFrame = result.frames.at(-1);
+    const finalDeath = result.reason === 'elimination' ? lastFrame?.events.filter((e) => e.kind === 'death').at(-1) : undefined;
+    let t = INTRO_MS;
     for (const frame of result.frames) {
       this.anims.push({ start: t, duration: 0, onStart: () => this.hooks.onTurn?.(frame.turn) });
       let lastStart = t;
       let lastDuration = 0;
       let prev: BattleEvent | null = null;
-      let chainFrom: { x: number; y: number } | null = null;
+      const ctx: TurnCtx = { chainFrom: null, caster: null };
       for (const ev of frame.events) {
-        if (ev.kind === 'card') chainFrom = null;
-        const spec = this.specFor(ev, prev, lastDuration, () => chainFrom, (p) => { chainFrom = p; });
+        if (ev.kind === 'card') { ctx.chainFrom = null; ctx.caster = null; }
+        if (ev.kind === 'ability') { ctx.chainFrom = null; ctx.caster = ev.id; }
+        const spec = this.specFor(ev, prev, lastDuration, ctx);
         const start = spec.concurrent ? lastStart : t;
-        this.anims.push({ start, duration: spec.duration, onStart: spec.onStart, onUpdate: spec.onUpdate, onEnd: spec.onEnd, draw: spec.draw });
+        const anim: Anim = { start, duration: spec.duration, onStart: spec.onStart, onUpdate: spec.onUpdate, onEnd: spec.onEnd, draw: spec.draw };
+        if (ev === finalDeath) anim.slow = { focus: () => this.pos(ev.id) };
+        this.anims.push(anim);
         t = Math.max(t, start + spec.duration * (spec.block ?? 1));
         if (!spec.concurrent) {
           lastStart = start;
@@ -204,10 +282,7 @@ export class Scene {
     this.floaters = [];
   }
 
-  private specFor(
-    ev: BattleEvent, prev: BattleEvent | null, prevDuration: number,
-    getChain: () => { x: number; y: number } | null, setChain: (p: { x: number; y: number }) => void,
-  ): Spec {
+  private specFor(ev: BattleEvent, prev: BattleEvent | null, prevDuration: number, ctx: TurnCtx): Spec {
     switch (ev.kind) {
       case 'move': {
         let from: Array<[number, number]> = [];
@@ -237,16 +312,18 @@ export class Scene {
       }
       case 'attack': {
         const attacker = this.peek(ev.id);
-        const type = attacker?.type ?? 'warrior';
-        const ranged = UNITS[type].range > 1;
-        const duration = ranged ? (type === 'mage' ? 340 : 300) : ev.charge ? 340 : 260;
+        const type = visualType(attacker);
+        const ranged = attacker ? rangeOf(attacker) > 1 : false;
+        const magic = type === 'mage' || type === 'dragon' || type === 'colossus';
+        const duration = ranged ? (magic ? 340 : 300) : ev.charge ? 340 : 260;
         let hitDone = false;
         let a = { x: 0, y: 0 };
         let b = { x: 0, y: 0 };
         const impact = () => {
           if (hitDone) return;
           hitDone = true;
-          this.hit(ev.target, ev.damage, type === 'mage' ? RACE_ART[this.lookOf(ev.id).race].magic : '#ffffff', ev.charge ? 'charge' : 'normal');
+          const color = type === 'dragon' ? '#ff7a1a' : magic ? RACE_ART[this.lookOf(ev.id).race].magic : '#ffffff';
+          this.hit(ev.target, ev.damage, color, ev.charge || attacker?.type === 'boss' ? 'charge' : 'normal', ev.absorbed);
           this.sfx(ev.charge ? 'heavy' : 'hit', ev.damage / 4);
           if (ev.charge) {
             this.shake = Math.max(this.shake, 9);
@@ -258,7 +335,7 @@ export class Scene {
           onStart: () => {
             a = this.pos(ev.id);
             b = this.pos(ev.target);
-            this.sfx(type === 'archer' ? 'arrow' : type === 'mage' ? 'magic' : 'swing');
+            this.sfx(type === 'archer' ? 'arrow' : type === 'dragon' ? 'fireball' : magic ? 'magic' : 'swing');
           },
           onUpdate: (p) => {
             const u = this.units.get(ev.id);
@@ -279,7 +356,7 @@ export class Scene {
             const x = lerp(a.x, b.x, p);
             const y = lerp(a.y, b.y, p) - Math.sin(p * Math.PI) * (type === 'archer' ? CELL * 0.5 : CELL * 0.15) - CELL * 0.25;
             if (type === 'archer') drawArrow(c, x, y, Math.atan2(b.y - a.y, b.x - a.x) + (0.5 - p) * -1.2 * Math.sign(b.x - a.x || 1), '#e8e2d0');
-            else this.orbProjectile(c, x, y, RACE_ART[this.lookOf(ev.id).race].magic);
+            else this.orbProjectile(c, x, y, type === 'dragon' ? '#ff7a1a' : RACE_ART[this.lookOf(ev.id).race].magic, type === 'dragon' ? 13 : 8);
           } : undefined,
         };
       }
@@ -289,7 +366,7 @@ export class Scene {
           duration: concurrent ? prevDuration : 250,
           concurrent,
           onEnd: () => {
-            this.hit(ev.target, ev.damage, '#c792ea', 'normal');
+            this.hit(ev.target, ev.damage, '#c792ea', 'normal', ev.absorbed);
             this.sfx('hit', 0.5);
           },
         };
@@ -407,19 +484,118 @@ export class Scene {
         };
       }
       case 'spell':
-        return this.spellSpec(ev, prev, getChain, setChain);
+        return this.spellSpec(ev, prev, ctx);
+      case 'ability': {
+        const caster = this.peek(ev.id);
+        const boss = caster?.special?.kind === 'boss';
+        return {
+          duration: boss ? 1300 : 1500,
+          onStart: () => {
+            this.hooks.onAbility?.(ev.side, caster?.special, ev.name, ev.fizzled);
+            this.sfx(boss ? 'explosion' : 'legendary', boss ? 0.7 : 0.8);
+            const { x, y } = this.pos(ev.id);
+            const color = boss ? '#ff7a1a' : RACE_ART[this.looks[ev.side].race].magic;
+            this.burst(x, y, color, 60, 4.5, 4, -0.02, 1300);
+            this.flash = { alpha: 0.45, color };
+            this.shake = Math.max(this.shake, boss ? 16 : 8);
+            this.cam = { zoom: 1.08, x, y };
+          },
+          onEnd: () => {
+            this.hooks.onAbilityEnd?.();
+            if (ev.fizzled) this.floatText('Sin efecto', VIEW_W / 2, VIEW_H / 2, '#b8c0c8', 22);
+          },
+          draw: (c, p) => {
+            const { x, y } = this.pos(ev.id);
+            const color = boss ? '#ff7a1a' : RACE_ART[this.looks[ev.side].race].magic;
+            ringPulse(c, x, y + CELL * 0.3, CELL * (0.4 + p * 1.6), color, 1 - p);
+            ringPulse(c, x, y + CELL * 0.3, CELL * (0.2 + p * 0.9), '#ffffff', (1 - p) * 0.7);
+            lightPillar(c, x, y, color, Math.sin(p * Math.PI) * 0.8);
+          },
+        };
+      }
+      case 'shield':
+        return {
+          duration: 520,
+          concurrent: prev?.kind === 'shield',
+          onStart: () => {
+            const u = this.units.get(ev.id);
+            if (u) {
+              u.shield += ev.amount;
+              if (!u.status.includes('shield')) u.status.push('shield');
+            }
+            this.sfx('buff');
+            const { x, y } = this.pos(ev.id);
+            this.burst(x, y, '#8fd3ff', 14, 1.4, 3, -0.03, 800);
+            this.floatText(`+${ev.amount} 🛡`, x, y - CELL * 0.75, '#8fd3ff', 15);
+          },
+          draw: (c, p) => {
+            const { x, y } = this.pos(ev.id);
+            bubble(c, x, y - CELL * 0.25, CELL * 0.5 * ease(Math.min(1, p * 2)), '#8fd3ff', 1 - p * 0.5);
+          },
+        };
+      case 'poisoned':
+        return {
+          duration: 600,
+          concurrent: prev?.kind === 'poisoned' || prev?.kind === 'card' || prev?.kind === 'ability',
+          onStart: () => {
+            const u = this.units.get(ev.id);
+            if (u && !u.status.includes('poison')) u.status.push('poison');
+            this.sfx('magic', 0.5);
+            const { x, y } = this.pos(ev.id);
+            this.smoke(x, y, '#3f8f2a', 10);
+            this.burst(x, y, '#8fdf4a', 18, 1.6, 3, -0.02, 900);
+          },
+        };
+      case 'poison':
+        return {
+          duration: 420,
+          concurrent: prev?.kind === 'poison',
+          onStart: () => {
+            const u = this.units.get(ev.id);
+            const { x, y } = this.pos(ev.id);
+            if (u) { u.hp -= ev.damage; u.flash = 0.6; }
+            this.burst(x, y - CELL * 0.1, '#8fdf4a', 12, 1.2, 3, -0.04, 700);
+            this.floatText(`-${ev.damage} ☠`, x, y - CELL * 0.6, '#9dff6a', 17);
+            this.sfx('hit', 0.3);
+          },
+        };
+      case 'thorns':
+        return {
+          duration: prevDuration || 260,
+          concurrent: prev?.kind === 'attack',
+          onEnd: () => {
+            const { x, y } = this.pos(ev.target);
+            this.hit(ev.target, ev.damage, '#6dff9e', 'normal');
+            this.burst(x, y, '#3fbf6a', 16, 2.4, 2.5, 0.04, 600);
+            this.floatText('¡ESPINAS!', x, y - CELL * 0.9, '#6dff9e', 14);
+          },
+        };
+      case 'morale':
+        return {
+          duration: 1200,
+          onStart: () => {
+            this.hooks.onMorale?.(ev.side);
+            this.sfx('defeat', 0.6);
+            this.flash = { alpha: 0.4, color: '#5a0a0a' };
+            this.shake = 12;
+            for (const u of this.units.values()) if (u.side === ev.side && !u.status.includes('broken')) u.status.push('broken');
+          },
+          onEnd: () => this.hooks.onAbilityEnd?.(),
+        };
       case 'buff': {
-        const color = STATUS_COLORS[ev.stat];
+        const debuff = ev.amount < 0;
+        const color = debuff ? '#c792ea' : STATUS_COLORS[ev.stat];
         return {
           duration: 650,
           concurrent: prev?.kind === 'buff',
           onStart: () => {
             const u = this.units.get(ev.id);
-            if (u && !u.status.includes(ev.stat)) u.status.push(ev.stat);
-            this.sfx('buff');
+            const status: StatusEffect = debuff ? 'weakened' : ev.stat;
+            if (u && !u.status.includes(status)) u.status.push(status);
+            this.sfx(debuff ? 'magic' : 'buff', debuff ? 0.5 : 1);
             const { x, y } = this.pos(ev.id);
-            this.burst(x, y + CELL * 0.2, color, 16, 1.4, 3, -0.06, 900);
-            this.floatText(`+${ev.amount} ${STAT_LABEL[ev.stat]}`, x, y - CELL * 0.75, color, 15);
+            this.burst(x, y + CELL * 0.2, color, 16, 1.4, 3, debuff ? 0.06 : -0.06, 900);
+            this.floatText(`${debuff ? '' : '+'}${ev.amount} ${STAT_LABEL[ev.stat]}`, x, y - CELL * 0.75, color, 15);
           },
           draw: (c, p) => {
             const { x, y } = this.pos(ev.id);
@@ -454,7 +630,7 @@ export class Scene {
           const side: Side = ev.kind === 'summon' ? ev.side : (this.peekDead(ev.id)?.side ?? 0);
           const type: UnitType = ev.kind === 'summon' ? ev.type : (this.peekDead(ev.id)?.type ?? 'warrior');
           const maxHp = this.deadCache.get(ev.id)?.maxHp ?? UNITS[type].hp;
-          const u = this.newUnit({ id: ev.id, side, type, x: ev.x, y: ev.y, hp: ev.hp, maxHp: summon ? ev.hp : maxHp, status: [] });
+          const u = this.newUnit({ id: ev.id, side, type, x: ev.x, y: ev.y, hp: ev.hp, maxHp: summon ? ev.hp : maxHp, shield: 0, status: [] });
           u.scale = 0.2;
           this.units.set(ev.id, u);
           this.sfx(summon ? 'summon' : 'rise');
@@ -485,17 +661,19 @@ export class Scene {
     }
   }
 
-  private spellSpec(
-    ev: BattleEvent & { kind: 'spell' }, prev: BattleEvent | null,
-    getChain: () => { x: number; y: number } | null, setChain: (p: { x: number; y: number }) => void,
-  ): Spec {
-    const card = ev.card;
-    const concurrent = prev?.kind === 'spell' && prev.card === card && card !== 'chain-lightning';
+  private spellSpec(ev: BattleEvent & { kind: 'spell' }, prev: BattleEvent | null, ctx: TurnCtx): Spec {
+    const caster = ctx.caster !== null ? this.peek(ctx.caster) : undefined;
+    const bossFire = caster?.special?.kind === 'boss' && BOSSES[caster.special.id].look === 'dragon';
+    // Las habilidades se ven como meteoros (fuego de dragón) o como magia de la raza.
+    const card: CardId | 'ability' = ev.card ?? (bossFire ? 'meteor' : 'ability');
+    const concurrent = prev?.kind === 'spell' && prev.card === ev.card && card !== 'chain-lightning';
     const casterX = ev.side === 0 ? PAD - 10 : VIEW_W - PAD + 10;
     let a = { x: 0, y: 0 };
     let b = { x: 0, y: 0 };
+    const getChain = () => ctx.chainFrom;
+    const setChain = (p: { x: number; y: number }) => { ctx.chainFrom = p; };
     const impact = (color: string, big = false) => {
-      this.hit(ev.target, ev.damage, color, big ? 'charge' : 'normal');
+      this.hit(ev.target, ev.damage, color, big ? 'charge' : 'normal', ev.absorbed);
       this.sfx(big ? 'explosion' : 'hit', ev.damage / 4);
       if (big) this.shake = Math.max(this.shake, 14);
     };
@@ -568,12 +746,12 @@ export class Scene {
       };
     }
     const fire = card === 'fire-arrow';
-    const color = fire ? '#ff7a1a' : RARITY_COLORS[CARDS[card].rarity].main;
+    const color = fire ? '#ff7a1a' : card === 'ability' ? RACE_ART[this.looks[ev.side].race].magic : RARITY_COLORS[CARDS[card].rarity].main;
     return {
       duration: 420, concurrent,
       onStart: () => {
         b = this.pos(ev.target);
-        a = { x: casterX, y: b.y - CELL * 0.6 };
+        a = caster ? this.pos(caster.id) : { x: casterX, y: b.y - CELL * 0.6 };
         this.sfx(fire ? 'fireball' : 'magic', 0.6);
       },
       onEnd: () => {
@@ -599,6 +777,7 @@ export class Scene {
     return {
       id: u.id, side: u.side, type: u.type, look: this.looks[u.side], x: u.x, y: u.y, hp: u.hp, hpShown: u.hp, maxHp: u.maxHp,
       alpha: 1, flash: 0, offX: 0, offY: 0, scale: 1, status: [...u.status], phase: (u.id * 1.7) % (Math.PI * 2),
+      shield: u.shield ?? 0, ...(u.special ? { special: u.special } : {}),
     };
   }
 
@@ -625,18 +804,24 @@ export class Scene {
     for (const s of snapshot) {
       seen.add(s.id);
       const u = this.units.get(s.id) ?? this.newUnit(s);
-      Object.assign(u, { x: s.x, y: s.y, hp: s.hp, maxHp: s.maxHp, status: [...s.status], alpha: 1, scale: 1, offX: 0, offY: 0 });
+      Object.assign(u, { x: s.x, y: s.y, hp: s.hp, maxHp: s.maxHp, shield: s.shield, status: [...s.status], alpha: 1, scale: 1, offX: 0, offY: 0 });
       this.units.set(s.id, u);
     }
     for (const id of [...this.units.keys()]) if (!seen.has(id)) this.units.delete(id);
   }
 
-  private hit(id: number, damage: number, color: string, kind: 'normal' | 'charge'): void {
+  private hit(id: number, damage: number, color: string, kind: 'normal' | 'charge', absorbed = 0): void {
     const u = this.units.get(id);
     const { x, y } = this.pos(id);
     if (u) {
       u.hp -= damage;
+      u.shield = Math.max(0, u.shield - absorbed);
       u.flash = 1;
+    }
+    if (absorbed) {
+      this.floatText(`🛡${absorbed}`, x - 22, y - CELL * 0.35, '#8fd3ff', 15);
+      this.burst(x, y - CELL * 0.25, '#b8e4ff', 10, 2, 2.5, 0, 400);
+      if (!damage) return;
     }
     this.burst(x, y - CELL * 0.1, color, kind === 'charge' ? 26 : 12, kind === 'charge' ? 3.4 : 2.2, 2.8, 0.08, 500);
     this.floatText(`-${damage}`, x + (Math.random() - 0.5) * 16, y - CELL * 0.55, kind === 'charge' ? '#ffb020' : '#ffffff', kind === 'charge' ? 26 : 20);
@@ -701,8 +886,21 @@ export class Scene {
     this.clock += dt;
     const k = this.mode === 'battle' ? this.speed : 1;
     if (this.playing) {
-      this.time += dt * this.speed;
+      // Cámara lenta y zoom mientras dura el golpe final.
+      const slow = this.anims.find((a) => a.slow && a.started && !a.ended);
+      this.time += dt * this.speed * (slow ? 0.3 : 1);
+      if (slow) {
+        const f = slow.slow!.focus();
+        this.cam = { zoom: 1.18, x: f.x, y: f.y };
+      }
       this.runAnims();
+    }
+    // La cámara vuelve sola al plano general.
+    if (!this.anims.some((a) => a.slow && a.started && !a.ended)) {
+      const k = Math.min(1, dt / 500);
+      this.cam.zoom += (1 - this.cam.zoom) * k;
+      this.cam.x += (VIEW_W / 2 - this.cam.x) * k;
+      this.cam.y += (VIEW_H / 2 - this.cam.y) * k;
     }
     this.step(dt * k);
     this.draw();
@@ -767,6 +965,15 @@ export class Scene {
     c.save();
     c.clearRect(0, 0, VIEW_W, VIEW_H);
     if (this.shake > 0.3) c.translate((Math.random() - 0.5) * this.shake, (Math.random() - 0.5) * this.shake);
+    if (this.cam.zoom > 1.001) {
+      // Zoom sin salirse del tablero.
+      const z = this.cam.zoom;
+      const fx = Math.max(VIEW_W / (2 * z), Math.min(VIEW_W - VIEW_W / (2 * z), this.cam.x));
+      const fy = Math.max(VIEW_H / (2 * z), Math.min(VIEW_H - VIEW_H / (2 * z), this.cam.y));
+      c.translate(VIEW_W / 2, VIEW_H / 2);
+      c.scale(z, z);
+      c.translate(-fx, -fy);
+    }
     if (this.bg) c.drawImage(this.bg, 0, 0, VIEW_W, VIEW_H);
 
     this.drawAmbient(c);
@@ -779,15 +986,16 @@ export class Scene {
       if (a.draw && a.started && !a.ended) a.draw(c, a.duration === 0 ? 1 : Math.min(1, (this.time - a.start) / a.duration));
     }
     if (this.mode === 'build' && this.ghost && this.hover && this.hover.x < DEPLOY_COLUMNS) {
-      const s = getSprite(this.ghost.type, this.ghost.look.race, this.ghost.look.armor, 1);
+      const s = spriteFor(this.ghost, this.ghost.look.race, this.ghost.look.armor, 1);
       c.globalAlpha = 0.45 + Math.sin(this.clock / 200) * 0.1;
-      drawSprite(c, s, px(this.hover.x), py(this.hover.y), 1);
+      drawSprite(c, s, px(this.hover.x), py(this.hover.y), sizeOf(this.ghost));
       c.globalAlpha = 1;
     }
     this.drawParticles(c);
     this.drawFloaters(c);
     for (const u of units) this.drawBar(c, u);
     c.restore();
+    this.drawBossBar(c);
 
     if (this.flash.alpha > 0.01) {
       c.fillStyle = this.flash.color;
@@ -851,7 +1059,7 @@ export class Scene {
     c.beginPath();
     c.ellipse(x, y, CELL * 0.32 * u.scale, CELL * 0.1 * u.scale, 0, 0, Math.PI * 2);
     c.fill();
-    const team = u.side === this.mySide ? TEAM_COLORS.ally : TEAM_COLORS.enemy;
+    const team = u.special?.kind === 'commander' ? '#ffd24a' : u.side === this.mySide ? TEAM_COLORS.ally : TEAM_COLORS.enemy;
     c.shadowColor = team;
     c.shadowBlur = 10;
     c.strokeStyle = team;
@@ -872,8 +1080,9 @@ export class Scene {
       c.fillRect(x - r, y - CELL * 0.35 - r, r * 2, r * 2);
     }
     for (const s of u.status) {
-      if (s === 'stunned') continue;
-      ringPulse(c, x, y, CELL * (0.4 + Math.sin(this.clock / 250) * 0.03), STATUS_COLORS[s], 0.7);
+      if (s === 'attack' || s === 'armor' || s === 'speed') ringPulse(c, x, y, CELL * (0.4 + Math.sin(this.clock / 250) * 0.03), STATUS_COLORS[s], 0.7);
+      if (s === 'thorns') spikes(c, x, y, CELL * 0.42, this.clock);
+      if (s === 'weakened') ringPulse(c, x, y, CELL * 0.38, '#c792ea', 0.6);
     }
     c.restore();
   }
@@ -883,18 +1092,27 @@ export class Scene {
     const x = px(u.x) + u.offX;
     const y = py(u.y) + u.offY + bob;
     const facing = u.side === 0 ? 1 : -1;
-    const scale = u.scale * (u.type === 'golem' ? 1.25 : 1);
+    const scale = u.scale * sizeOf(u);
     c.save();
     c.globalAlpha = u.alpha;
-    drawSprite(c, getSprite(u.type, u.look.race, u.look.armor, facing), x, y, scale);
+    drawSprite(c, spriteFor(u, u.look.race, u.look.armor, facing), x, y, scale);
     if (u.flash > 0.05) {
       c.globalAlpha = u.alpha * u.flash;
-      drawSprite(c, getSprite(u.type, u.look.race, u.look.armor, facing, true), x, y, scale);
+      drawSprite(c, spriteFor(u, u.look.race, u.look.armor, facing, true), x, y, scale);
     }
+    if (u.status.includes('poison')) {
+      c.globalAlpha = 0.25 + Math.sin(this.clock / 200) * 0.1;
+      c.globalCompositeOperation = 'lighter';
+      drawSprite(c, spriteFor(u, u.look.race, u.look.armor, facing, true), x, y, scale);
+      c.globalCompositeOperation = 'source-over';
+      c.globalAlpha = 1;
+      if (Math.random() < 0.08) this.particles.push(particle(x + (Math.random() - 0.5) * CELL * 0.4, y, 0, -0.6, '#8fdf4a', 3, 700, -0.01, true));
+    }
+    if (u.shield > 0) bubble(c, x, y - CELL * 0.25 * scale, CELL * 0.5 * scale, '#8fd3ff', 0.55 + Math.sin(this.clock / 300) * 0.1);
     if (u.status.includes('stunned')) {
       c.globalAlpha = 0.45;
       c.globalCompositeOperation = 'lighter';
-      drawSprite(c, getSprite(u.type, u.look.race, u.look.armor, facing, true), x, y, scale);
+      drawSprite(c, spriteFor(u, u.look.race, u.look.armor, facing, true), x, y, scale);
       c.globalCompositeOperation = 'source-over';
       c.globalAlpha = 0.8;
       c.fillStyle = 'rgba(168,232,255,0.35)';
@@ -939,6 +1157,40 @@ export class Scene {
     c.beginPath();
     c.roundRect(x - 2, y - 2, w + 4, 9, 4);
     c.stroke();
+    c.restore();
+  }
+
+  /** Barra de vida grande para los jefes de incursión. */
+  private drawBossBar(c: CanvasRenderingContext2D): void {
+    const boss = [...this.units.values()].find((u) => u.special?.kind === 'boss');
+    if (!boss || boss.special?.kind !== 'boss') return;
+    const def = BOSSES[boss.special.id];
+    const w = VIEW_W * 0.6;
+    const x = (VIEW_W - w) / 2;
+    const y = PAD + 30;
+    const ratio = Math.max(0, boss.hp / boss.maxHp);
+    const shown = Math.max(0, Math.min(1, boss.hpShown / boss.maxHp));
+    c.save();
+    c.fillStyle = 'rgba(8,4,4,0.85)';
+    c.beginPath(); c.roundRect(x - 4, y - 4, w + 8, 20, 6); c.fill();
+    c.fillStyle = 'rgba(255,255,255,0.7)';
+    c.fillRect(x, y, w * Math.max(ratio, shown), 12);
+    const g = c.createLinearGradient(0, y, 0, y + 12);
+    g.addColorStop(0, '#ff8a3a');
+    g.addColorStop(1, '#8a0a0a');
+    c.fillStyle = g;
+    c.fillRect(x, y, w * ratio, 12);
+    c.strokeStyle = '#e8c164';
+    c.lineWidth = 1.5;
+    c.beginPath(); c.roundRect(x - 4, y - 4, w + 8, 20, 6); c.stroke();
+    c.font = '900 14px Cinzel, Georgia, serif';
+    c.textAlign = 'center';
+    c.fillStyle = '#fff0b3';
+    c.strokeStyle = '#000';
+    c.lineWidth = 3;
+    const label = `${def.name}, ${def.title} · ${Math.max(0, Math.ceil(boss.hp))} / ${boss.maxHp}`;
+    c.strokeText(label, VIEW_W / 2, y + 30);
+    c.fillText(label, VIEW_W / 2, y + 30);
     c.restore();
   }
 
@@ -997,6 +1249,41 @@ function drawArrow(c: CanvasRenderingContext2D, x: number, y: number, angle: num
   c.beginPath(); c.moveTo(14, 0); c.lineTo(6, -4); c.lineTo(6, 4); c.closePath(); c.fill();
   c.fillStyle = '#f4efe2';
   c.beginPath(); c.moveTo(-18, 0); c.lineTo(-23, -4); c.lineTo(-14, 0); c.lineTo(-23, 4); c.closePath(); c.fill();
+  c.restore();
+}
+
+function bubble(c: CanvasRenderingContext2D, x: number, y: number, r: number, color: string, alpha: number): void {
+  if (r <= 0) return;
+  c.save();
+  c.globalAlpha = Math.max(0, alpha);
+  const g = c.createRadialGradient(x - r * 0.3, y - r * 0.3, r * 0.1, x, y, r);
+  g.addColorStop(0, 'rgba(255,255,255,0.05)');
+  g.addColorStop(0.8, hexA(color, 0.18));
+  g.addColorStop(1, hexA(color, 0.55));
+  c.fillStyle = g;
+  c.strokeStyle = hexA(color, 0.9);
+  c.lineWidth = 1.5;
+  c.beginPath();
+  c.arc(x, y, r, 0, Math.PI * 2);
+  c.fill();
+  c.stroke();
+  c.restore();
+}
+
+function spikes(c: CanvasRenderingContext2D, x: number, y: number, r: number, clock: number): void {
+  c.save();
+  c.translate(x, y);
+  c.scale(1, 0.35);
+  c.rotate(clock / 1500);
+  c.fillStyle = '#3fbf6a';
+  for (let i = 0; i < 12; i++) {
+    const a = (i / 12) * Math.PI * 2;
+    c.beginPath();
+    c.moveTo(Math.cos(a - 0.12) * r, Math.sin(a - 0.12) * r);
+    c.lineTo(Math.cos(a) * r * 1.25, Math.sin(a) * r * 1.25);
+    c.lineTo(Math.cos(a + 0.12) * r, Math.sin(a + 0.12) * r);
+    c.fill();
+  }
   c.restore();
 }
 

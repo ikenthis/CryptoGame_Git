@@ -55,4 +55,4 @@ export const RARITY_COLORS: Record<Rarity, { main: string; light: string; glow: 
 
 export const TEAM_COLORS = { ally: '#46c8ff', enemy: '#ff4a4a' } as const;
 
-export const STATUS_COLORS = { attack: '#ff5a36', armor: '#9cc9ff', speed: '#6dff9e', stunned: '#a8e8ff' } as const;
+export const STATUS_COLORS = { attack: '#ff5a36', armor: '#9cc9ff', speed: '#6dff9e', thorns: '#3fbf6a', stunned: '#a8e8ff' } as const;

@@ -27,14 +27,15 @@ elegir y *dónde* colocarlas.
 | Asíncrono | No hace falta coincidir en horario: ideal para móvil y Telegram. |
 | Compartible | Cada partida es una repetición reproducible: «mira cómo gané». |
 
-## 2. Reglas (v0.2)
+## 2. Reglas (v0.3)
 
 - Tablero de 8×6. Cada jugador despliega en sus 3 columnas propias.
-- Cada ejército tiene **una raza**, **12 de oro** para unidades (máximo 6) y
-  **6 de energía** para cartas (máximo 3, y solo 1 legendaria).
-- Hasta 40 turnos. Cada turno empieza con la **fase de cartas** (las cartas
-  programadas para ese turno) y sigue con la **fase de unidades**, que actúan
-  intercaladas. El bando que empieza alterna de un turno a otro.
+- Cada ejército tiene **una raza**, **un comandante** (obligatorio, gratis),
+  **12 de oro** para unidades (máximo 6) y **6 de energía** para cartas
+  (máximo 3, y solo 1 legendaria).
+- Hasta 40 turnos. Cada turno: **veneno** → **habilidades de inicio de turno**
+  (comandantes y jefes) → **cartas** programadas para ese turno → **unidades**,
+  que actúan intercaladas. El bando que empieza alterna de un turno a otro.
 - Cada unidad ataca al enemigo más cercano (desempata la menor vida). Si no lo
   alcanza, avanza por el camino libre más corto.
 - **Victoria:** eliminar al rival. Si se agotan los turnos, gana quien conserve
@@ -76,25 +77,65 @@ empezar ese turno. Elegir el momento es parte de la estrategia: una
 Resurrección en el turno 1 no hace nada, y en el turno 5 puede decidir la
 partida. Si no hay objetivo válido, la carta **falla** («Sin efecto»).
 
-| Carta | Rareza | Energía | Efecto |
-|---|---|---|---|
-| Flecha Ígnea | Común | 1 | 3 de daño al enemigo con menos vida |
-| Poción Menor | Común | 1 | Cura 4 al aliado más herido |
-| Grito de Guerra | Común | 2 | Aliados +1 ataque durante 2 turnos |
-| Piel de Piedra | Poco común | 2 | Aliados +1 armadura durante 3 turnos |
-| Viento Veloz | Poco común | 2 | Aliados +1 velocidad durante 2 turnos |
-| Cadenas de Escarcha | Poco común | 2 | Congela al enemigo con más vida durante 2 turnos |
-| Meteoro | Rara | 3 | 5 de daño al centro del grupo y 2 a los adyacentes, ignora armadura |
-| Refuerzos | Rara | 3 | Invoca un Guerrero en la retaguardia |
-| Luz Sanadora | Rara | 3 | Cura 3 a todos los aliados |
-| Cadena de Rayos | Épica | 4 | 4 / 3 / 2 de daño encadenado |
-| Resurrección | Épica | 4 | Revive a la unidad caída más valiosa con la mitad de vida |
-| 5 legendarias | Legendaria | 5 | Una por raza (ver tabla de razas) |
+Cada carta tiene una **categoría**: ataque, defensa, efecto (mejora propia o
+debilitamiento del rival), curación o invocación. 24 cartas en total:
+
+| Carta | Categoría | Rareza | Energía | Efecto |
+|---|---|---|---|---|
+| Flecha Ígnea | Ataque | Común | 1 | 3 de daño al enemigo con menos vida |
+| Muro de Escudos | Defensa | Común | 1 | Aliados +2 armadura durante 1 turno |
+| Quebrantar Armaduras | Efecto | Común | 1 | Enemigos −1 armadura durante 2 turnos |
+| Poción Menor | Curación | Común | 1 | Cura 4 al aliado más herido |
+| Grito de Guerra | Efecto | Común | 2 | Aliados +1 ataque durante 2 turnos |
+| Piel de Piedra | Defensa | Poco común | 2 | Aliados +1 armadura durante 3 turnos |
+| Barrera Arcana | Defensa | Poco común | 2 | Escudo de 6 al aliado más herido |
+| Maldición de Debilidad | Efecto | Poco común | 2 | Enemigos −1 ataque durante 2 turnos |
+| Viento Veloz | Efecto | Poco común | 2 | Aliados +1 velocidad durante 2 turnos |
+| Cadenas de Escarcha | Efecto | Poco común | 2 | Congela al enemigo con más vida durante 2 turnos |
+| Meteoro | Ataque | Rara | 3 | 5 al centro del grupo y 2 a los adyacentes, ignora armadura |
+| Armadura de Espinas | Defensa | Rara | 3 | 3 turnos: quien golpee cuerpo a cuerpo recibe 2 |
+| Nube Tóxica | Efecto | Rara | 3 | Veneno de 2 por turno durante 3 turnos al grupo enemigo |
+| Refuerzos | Invocación | Rara | 3 | Invoca un Guerrero en la retaguardia |
+| Luz Sanadora | Curación | Rara | 3 | Cura 3 a todos los aliados |
+| Cadena de Rayos | Ataque | Épica | 4 | 4 / 3 / 2 de daño encadenado |
+| Égida de los Antiguos | Defensa | Épica | 4 | Escudo de 4 a todos los aliados |
+| Terremoto | Efecto | Épica | 4 | 2 a todos los enemigos y aturde al más adelantado |
+| Resurrección | Invocación | Épica | 4 | Revive a la unidad caída más valiosa con media vida |
+| 5 legendarias | Varias | Legendaria | 5 | Una por raza (ver tabla de razas) |
+
+El **escudo** absorbe daño antes que la vida; el **veneno** hace daño al
+empezar cada turno; las **espinas** devuelven daño al atacante cuerpo a cuerpo.
 
 **La rareza no es poder.** Lo que equilibra una carta es su coste de energía;
 la rareza indica lo espectacular o específica que es y cuántas copias
 existen. Una legendaria cuesta 5 de los 6 puntos de energía: casi todo el
 presupuesto de cartas.
+
+### Comandantes
+
+Todo ejército lleva un comandante: una unidad más en el tablero, gratis, con
+estadísticas propias, una **pasiva** que mejora a sus tropas y una
+**habilidad** que se dispara sola **una vez** (al empezar, al bajar de media
+vida, con la primera baja aliada o en un turno concreto). **Si el comandante
+cae, sus tropas pierden 1 de ataque** el resto de la batalla: protegerlo es
+parte de la táctica.
+
+| Comandante | Raza | Rareza | Pasiva | Habilidad |
+|---|---|---|---|---|
+| Aldric, Capitán de la Guardia | Humanos | Común | Guerreros +2 vida | Al empezar: aliados +1 armadura 3 turnos |
+| Seraphine, Reina Solar | Humanos | Legendaria | Caballeros +1 ataque | Media vida: cura 4 a todos |
+| Lyra, Exploradora del Alba | Elfos | Poco común | Arqueros +1 ataque | Al empezar: 5 de daño al más débil |
+| Thalanor, Archidruida | Elfos | Épica | Guardianes +3 vida | Primera baja: escudo de 3 a todos |
+| Grok el Rompehuesos | Orcos | Común | Guerreros +1 ataque | Primera baja: aliados +2 ataque 2 turnos |
+| Mag'thar, Caudillo de Ceniza | Orcos | Legendaria | Caballeros +2 vida | Al empezar: aliados +1 velocidad 2 turnos |
+| Velka, Nigromante del Velo | No-muertos | Rara | Guerreros +1 armadura | Primera baja: la revive con media vida |
+| Morvath, Rey Lich | No-muertos | Legendaria | Magos +2 vida | Turno 3: veneno al grupo enemigo |
+| Borin, Thane de Durnhal | Enanos | Común | Guardianes +1 ataque | Al empezar: escudo de 2 a todos |
+| Brunhild, Forjarunas | Enanos | Épica | Arqueros +1 alcance | Media vida: 2 a todos y aturde |
+
+Con el mismo ejército, los diez comandantes quedan entre 21 y 39 puntos en el
+informe de balance, con las rarezas repartidas por toda la tabla: un
+legendario no garantiza ganar.
 
 ### Armaduras (cosméticas)
 
@@ -118,6 +159,31 @@ todas.
 - **Habilidades de héroe** (una por ejército) para más identidad.
 
 ## 3. Modos de juego
+
+**Campaña e incursiones (PvE):** misiones encadenadas por capítulos (Frontera
+de Aurelia, Bosque de Sylvaran, Montañas de Durnhal) contra ejércitos con
+comandante y cartas, y **incursiones** contra jefes de mundo (Vermithrax, el
+Dragón de Ceniza, y Xal-Azar, el Coloso del Vacío). En una incursión no hace
+falta ganar: el botín crece con el daño hecho al jefe. Cada batalla cuesta
+**provisiones** (1 cada 20 minutos, máximo 10), lo que limita el farmeo y da un
+motivo para volver cada día.
+
+**Mercado Negro:**
+- **Sobres** de cartas (3 cartas) y de comandante (1), con probabilidades
+  publicadas. **Solo se abren con Fichas Extrañas**, que se ganan jugando y no
+  se compran ni se comercian.
+- **Altar de Transmutación:** 3 cartas de una rareza → 1 aleatoria de la
+  siguiente.
+- **Destilería y Forja:** las copias repetidas se destilan en Esencia y con
+  Esencia se fabrica la carta exacta que buscas.
+- **El Mercader Sin Nombre:** 4 ofertas al día (iguales para todos) que
+  cambian materiales por fichas, provisiones, cartas o comandantes.
+- **Mercado entre jugadores** (siguiente fase): compra y venta de cartas,
+  comandantes y materiales con Oro de guerra. Requiere que la colección viva
+  en el servidor para impedir duplicados.
+
+Recursos: Oro de guerra, Hierro, Cristal arcano y Hueso antiguo
+(comerciables); Fichas Extrañas, Esencia y Provisiones (no comerciables).
 
 1. **Práctica contra la IA** (gratis, sin premios). Se simula en el navegador
    con el mismo motor que el servidor. Sirve para aprender y para retener.
@@ -200,7 +266,10 @@ cosméticos, comisiones), **nunca** de los depósitos de otros jugadores.
 - Referidos multinivel.
 - **Sobres pagados con rareza aleatoria** (cajas de botín) ni cualquier mecánica
   de azar con dinero: en varios países (Bélgica, Países Bajos…) se consideran
-  juego de apuestas.
+  juego de apuestas. Los sobres del Mercado Negro solo se abren con Fichas
+  Extrañas, que se ganan jugando y **no se pueden comprar ni intercambiar**; si
+  algún día se vendieran fichas por dinero, los sobres pasarían a ser cajas de
+  botín de pago.
 - Cartas que den ventaja en torneos con premio solo por haberlas comprado.
 
 ## 6. Integridad y anti-trampas
@@ -239,6 +308,12 @@ cosméticos, comisiones), **nunca** de los depósitos de otros jugadores.
 - Términos claros: reglas, reparto, comisión, plazos y reembolsos.
 
 ## 8. Arquitectura
+
+El motor incluye `meta.ts` (perfil, campaña, sobres, transmutación, mercader)
+como funciones puras. Hoy el perfil se guarda en el navegador; el siguiente
+paso es que el servidor ejecute esas mismas funciones como autoridad, lo que
+habilita el mercado entre jugadores y los torneos con cartas propias.
+
 
 ```
 packages/engine   Motor determinista en TS (reglas, razas, cartas, simulación,

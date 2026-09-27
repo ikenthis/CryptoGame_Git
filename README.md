@@ -1,13 +1,16 @@
 # Bellum Gentium
 
 Juego de estrategia por turnos con torneos de habilidad y premios en USDC.
-Eliges una de **5 razas** (Humanos, Elfos, Orcos, No-muertos, Enanos), armas un
-ejército con 12 de oro, preparas hasta 3 **cartas de acción** (de comunes a
-legendarias) y la batalla se resuelve sola de forma **determinista**: sin azar,
+Eliges una de **5 razas** (Humanos, Elfos, Orcos, No-muertos, Enanos) y un
+**comandante** con habilidades propias, armas un ejército con 12 de oro,
+preparas hasta 3 **cartas de acción** de ataque, defensa, efecto, curación o
+invocación (de comunes a legendarias) y la batalla se resuelve sola de forma **determinista**: sin azar,
 auditable y sin puntuaciones que falsificar. Las **armaduras** son cosméticas y,
 como las cartas, se pueden vender como objetos del juego (ERC-1155).
 
-Incluye música y efectos de sonido sintetizados, un tutorial guiado de la
+Tiene **campaña** con misiones e **incursiones contra jefes** que dan
+materiales y Fichas Extrañas, y un **Mercado Negro** con sobres, transmutación,
+forja y un mercader diario. Incluye música y efectos de sonido sintetizados, un tutorial guiado de la
 primera batalla y funciona como **Mini App de Telegram**.
 
 - Diseño, economía, aspectos legales y hoja de ruta: [docs/GDD.md](docs/GDD.md)

@@ -116,6 +116,51 @@ export const CARD_ART: Record<CardId, string> = {
      <path d="M22 36 L32 42 L42 36 M32 42 V52 M18 14 L24 20 M46 14 L40 20" stroke="#ffb347" stroke-width="2.4" fill="none"/>
      <ellipse cx="46" cy="46" rx="4" ry="2" fill="#4f7d3a"/>`,
     grad('ag-g', '#bfb4a0', '#3a342c') + radial('ag-r', '#ffb347', '#5e2f09')),
+  'shield-wall': svg(
+    `<rect x="4" y="14" width="18" height="36" rx="4" fill="url(#sw-g)" ${O}/>
+     <rect x="23" y="10" width="18" height="40" rx="4" fill="url(#sw-g)" ${O}/>
+     <rect x="42" y="14" width="18" height="36" rx="4" fill="url(#sw-g)" ${O}/>
+     <circle cx="13" cy="32" r="4" fill="#f4d06f"/><circle cx="32" cy="30" r="5" fill="#f4d06f"/><circle cx="51" cy="32" r="4" fill="#f4d06f"/>`,
+    grad('sw-g', '#d6e2ee', '#4a5a6b')),
+  'arcane-barrier': svg(
+    `<path d="M8 52 C8 20 56 20 56 52 Z" fill="url(#ab-g)" opacity=".75" stroke="#b8d6ff" stroke-width="2"/>
+     <path d="M16 52 C16 30 48 30 48 52" fill="none" stroke="#ffffff" stroke-width="1.5" opacity=".7"/>
+     <circle cx="32" cy="44" r="6" fill="#ffe27a" ${O}/>
+     <path d="M20 22 l3 -6 M32 16 v-8 M44 22 l-3 -6" stroke="#b8d6ff" stroke-width="2.5" stroke-linecap="round"/>`,
+    radial('ab-g', '#8fd3ff', '#1f4fb4')),
+  'thorn-armor': svg(
+    `<path d="M32 6 L52 14 V30 C52 44 43 53 32 58 C21 53 12 44 12 30 V14 Z" fill="url(#ta-g)" ${O}/>
+     <path d="M12 18 L2 12 L12 24 M52 18 L62 12 L52 24 M14 36 L2 38 L16 42 M50 36 L62 38 L48 42 M24 54 L20 62 L30 56 M40 54 L44 62 L34 56 M32 6 L32 0" stroke="#3a5a1e" stroke-width="3" stroke-linecap="round"/>
+     <path d="M24 24 L32 34 L40 24" stroke="#9dffc0" stroke-width="3" fill="none"/>`,
+    grad('ta-g', '#8fb86a', '#2c4a18')),
+  bulwark: svg(
+    `<circle cx="32" cy="32" r="28" fill="url(#bw-r)"/>
+     <path d="M32 6 L54 14 V32 C54 46 44 55 32 60 C20 55 10 46 10 32 V14 Z" fill="url(#bw-g)" ${O}/>
+     <path d="M32 14 L46 19 V32 C46 41 40 47 32 51 C24 47 18 41 18 32 V19 Z" fill="none" stroke="#fff3b0" stroke-width="2"/>
+     <path d="M26 30 L32 24 L38 30 L32 40 Z" fill="#fff3b0"/>`,
+    grad('bw-g', '#c9a6ff', '#4a1f8a') + radial('bw-r', '#e2c2ff', '#3a1470')),
+  'armor-break': svg(
+    `<path d="M16 8 L48 8 L52 30 C52 44 42 54 32 58 C22 54 12 44 12 30 Z" fill="url(#abk-g)" ${O}/>
+     <path d="M30 6 L26 22 L34 28 L24 42 L30 58" stroke="#140f0a" stroke-width="3" fill="none"/>
+     <path d="M46 4 L58 16 L40 34 L34 28 Z" fill="#9aa3ad" ${O}/><rect x="52" y="0" width="8" height="10" transform="rotate(45 56 5)" fill="#6b4524"/>`,
+    grad('abk-g', '#b0b6bc', '#4a4f55')),
+  'weakness-curse': svg(
+    `<circle cx="32" cy="32" r="26" fill="url(#wk-r)"/>
+     <path d="M20 44 C20 30 26 22 32 22 C38 22 44 30 44 44" stroke="#e2c2ff" stroke-width="4" fill="none"/>
+     <path d="M16 46 H48" stroke="#140f0a" stroke-width="5" stroke-linecap="round"/>
+     <path d="M26 14 C30 8 34 8 38 14 M22 18 C28 10 36 10 42 18" stroke="#c792ea" stroke-width="2" fill="none"/>
+     <circle cx="32" cy="32" r="4" fill="#12141a"/>`,
+    radial('wk-r', '#a84dff', '#1a0a30')),
+  'poison-cloud': svg(
+    `<circle cx="22" cy="30" r="14" fill="#6dbf3a" opacity=".85"/><circle cx="38" cy="26" r="16" fill="#8fdf4a" opacity=".85"/><circle cx="44" cy="40" r="12" fill="#4a9f2a" opacity=".85"/><circle cx="24" cy="42" r="10" fill="#5aaf32" opacity=".85"/>
+     <path d="M26 34 a6 6 0 1 1 12 0 v4 h-12 Z" fill="#f2eedc" ${O}/><circle cx="29" cy="33" r="1.8" fill="#12141a"/><circle cx="35" cy="33" r="1.8" fill="#12141a"/>
+     <circle cx="14" cy="14" r="3" fill="#b6f5c9"/><circle cx="52" cy="12" r="2.5" fill="#b6f5c9"/><circle cx="50" cy="54" r="3" fill="#b6f5c9"/>`),
+  earthquake: svg(
+    `<rect x="2" y="36" width="60" height="24" fill="url(#eq-g)"/>
+     <path d="M32 36 L28 44 L36 48 L26 60 M28 44 L18 46 M36 48 L48 50" stroke="#ffb347" stroke-width="3" fill="none"/>
+     <path d="M4 36 L14 30 L22 36 L32 26 L42 36 L52 30 L60 36" fill="#6b5a4a" ${O}/>
+     <path d="M10 18 l6 6 M54 16 l-6 8 M32 6 v10" stroke="#ffe27a" stroke-width="3" stroke-linecap="round"/>`,
+    grad('eq-g', '#5e4a3a', '#1f1610')),
 };
 
 export const RACE_EMBLEM: Record<Race, string> = {
