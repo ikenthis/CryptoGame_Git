@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Bastión</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>⚔</text></svg>" />
+    <link rel="stylesheet" href="/src/style.css" />
+  </head>
+  <body>
+    <header>
+      <h1>Bastión</h1>
+      <p>Arma tu ejército, colócalo y compite en torneos de estrategia.</p>
+    </header>
+    <main>
+      <section class="board-panel">
+        <canvas id="board"></canvas>
+        <div class="status" id="status">Elige una unidad y haz clic en tu zona (columnas azules).</div>
+        <div class="row">
+          <label>Rival
+            <select id="opponent"></select>
+          </label>
+          <button id="simulate" class="primary">⚔ Simular</button>
+          <button id="edit" hidden>Volver a editar</button>
+          <button id="clear">Vaciar</button>
+        </div>
+      </section>
+      <aside>
+        <div class="budget"><span>Oro</span><strong id="budget"></strong></div>
+        <div id="palette" class="palette"></div>
+        <div class="card">
+          <h2>Arena diaria</h2>
+          <p class="muted">Entrada gratis. Tu ejército queda oculto hasta el cierre y juega contra todos los demás.</p>
+          <div class="row">
+            <input id="player" placeholder="Tu nombre de jugador" maxlength="42" />
+            <button id="submit" class="primary">Inscribirme</button>
+          </div>
+          <div id="submit-status" class="muted"></div>
+        </div>
+        <div class="card">
+          <h2>Torneos</h2>
+          <div id="tournaments" class="muted">Cargando…</div>
+        </div>
+      </aside>
+    </main>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

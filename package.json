@@ -1,0 +1,23 @@
+{
+  "name": "bastion",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "test": "node --test packages/engine/test/*.test.ts apps/server/test/*.test.ts",
+    "typecheck": "tsc -p tsconfig.json",
+    "dev:server": "node apps/server/src/main.ts",
+    "dev:web": "npm run dev -w apps/web",
+    "build:web": "npm run build -w apps/web"
+  },
+  "engines": {
+    "node": ">=22.18"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "typescript": "^5.9.0"
+  }
+}
