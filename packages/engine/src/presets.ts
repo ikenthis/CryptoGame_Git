@@ -6,6 +6,7 @@ export const PRESET_ARMIES: Record<string, { name: string; army: Army }> = {
     name: 'Horda de Ceniza',
     army: {
       race: 'orc',
+      commander: { id: 'grok', x: 1, y: 2 },
       armor: 'iron',
       units: [0, 1, 2, 3, 4, 5].map((y) => ({ type: 'warrior' as const, x: 2, y })),
       cards: [{ card: 'ash-fury', turn: 2 }, { card: 'fire-arrow', turn: 1 }],
@@ -15,6 +16,7 @@ export const PRESET_ARMIES: Record<string, { name: string; army: Army }> = {
     name: 'Muralla de Durnhal',
     army: {
       race: 'dwarf',
+      commander: { id: 'borin', x: 1, y: 2 },
       armor: 'steel',
       units: [
         { type: 'guardian', x: 2, y: 1 },
@@ -29,6 +31,7 @@ export const PRESET_ARMIES: Record<string, { name: string; army: Army }> = {
     name: 'Caballería de Aurelia',
     army: {
       race: 'human',
+      commander: { id: 'aldric', x: 0, y: 2 },
       armor: 'royal',
       units: [
         { type: 'knight', x: 2, y: 1 },
@@ -43,6 +46,7 @@ export const PRESET_ARMIES: Record<string, { name: string; army: Army }> = {
     name: 'Legión Sombría',
     army: {
       race: 'undead',
+      commander: { id: 'velka', x: 0, y: 3 },
       armor: 'eclipse',
       units: [
         { type: 'guardian', x: 2, y: 2 },
@@ -57,6 +61,7 @@ export const PRESET_ARMIES: Record<string, { name: string; army: Army }> = {
     name: 'Arqueros de Sylvaran',
     army: {
       race: 'elf',
+      commander: { id: 'lyra', x: 0, y: 2 },
       armor: 'runic',
       units: [
         { type: 'archer', x: 0, y: 1 },

@@ -1,4 +1,4 @@
-import { CARDS, RACE_IDS, type CardId, type Race, type Rarity } from '@gentium/engine';
+import { BOSSES, CARDS, COMMANDERS, RACE_IDS, type CardId, type Race, type Rarity } from '@gentium/engine';
 
 // Dirección de arte para generar ilustraciones con IA. Todas comparten el mismo
 // estilo para que la colección se vea coherente. Los prompts van en inglés
@@ -54,6 +54,14 @@ const CARD_SCENES: Record<CardId, string> = {
   'ash-fury': 'A towering orc warchief in blackened spiked armor roaring as a volcano erupts behind him, war drums pounding, a horde of orcs charging with burning eyes through ash and embers.',
   'fallen-legion': 'A skeletal lich king in a spiked crown raising his staff as hundreds of undead warriors claw their way out of their graves, cyan soul fire in their eyes, purple mist under a full moon.',
   'ancestral-golem': 'A colossal ancient stone golem covered in moss and glowing orange dwarven runes awakening inside a vast mountain forge, dwarves with braided beards kneeling before it, rivers of molten metal.',
+  'shield-wall': 'A tight line of soldiers locking tall steel shields together, arrows bouncing off the wall of shields, sparks, rain of arrows from above.',
+  'arcane-barrier': 'A glowing blue dome of arcane runes shielding a wounded warrior as fireballs explode against it.',
+  'thorn-armor': 'A knight in armor covered with living thorny vines, an attacker recoiling as thorns pierce back, green magical glow.',
+  bulwark: 'Translucent golden spectral shields of ancient gods appearing over every soldier of an army, violet sky, divine protection.',
+  'armor-break': 'A massive war hammer shattering an enemy breastplate into flying metal shards, slow-motion impact.',
+  'weakness-curse': 'A hooded witch casting violet chains of curse that drain the strength from a charging army, their weapons drooping.',
+  'poison-cloud': 'A thick toxic green cloud with a skull shape rolling over an enemy camp, soldiers coughing, sickly green light.',
+  earthquake: 'The ground splitting open under an enemy army, rocks rising, soldiers falling into glowing molten cracks.',
 };
 
 const RACE_PORTRAITS: Record<Race, string> = {
@@ -74,6 +82,16 @@ export const ART_JOBS: ArtJob[] = [
     id: `races/${race}`,
     size: '1024x1024',
     prompt: `${ART_STYLE} ${RACE_PORTRAITS[race]} Bust framed from the chest up, looking at the viewer, dark vignette background. The character belongs to ${RACE_LOOK[race]}.`,
+  })),
+  ...Object.values(COMMANDERS).map((c): ArtJob => ({
+    id: `commanders/${c.id}`,
+    size: '1024x1024',
+    prompt: `${ART_STYLE} Heroic portrait of ${c.name}, ${c.title}, a legendary commander of ${RACE_LOOK[c.race]}. ${c.lore} Bust framed from the chest up, commanding presence, ornate armor, dark vignette background. ${RARITY_MOOD[c.rarity]}`,
+  })),
+  ...Object.values(BOSSES).map((b): ArtJob => ({
+    id: `bosses/${b.id}`,
+    size: '1536x1024',
+    prompt: `${ART_STYLE} A colossal raid boss: ${b.name}, the ${b.look === 'dragon' ? 'Ash Dragon, a gigantic black dragon with molten cracks in its scales breathing fire' : 'Void Colossus, a towering being of black stone and purple void energy with a single burning eye'}. ${b.lore} Tiny heroes in the foreground for scale. ${RARITY_MOOD.legendary}`,
   })),
   ...Object.values(CARDS).map((card): ArtJob => ({
     id: `cards/${card.id}`,

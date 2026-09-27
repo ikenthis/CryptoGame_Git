@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import {
-  BUDGET, CARDS, CARD_IDS, MAX_TURNS, PRESET_ARMIES, RACE_IDS, UNITS, canonicalArmy, cardsForRace, computePayouts,
+  BOSSES, BUDGET, CARDS, CARD_IDS, CATEGORIES, MAX_TURNS, commandersForRace, PRESET_ARMIES, RACE_IDS, UNITS, canonicalArmy, cardsForRace, computePayouts,
   runTournament, simulate, statsFor, validateArmy,
   type Army, type BattleEvent, type BattleResult, type Standing,
 } from '../src/index.ts';
@@ -37,7 +37,7 @@ describe('validateArmy', () => {
   });
 
   it('valida las cartas: energía, legendarias, raza, repetidas y turno', () => {
-    const base = { race: 'human' as const, units: [{ type: 'warrior' as const, x: 0, y: 0 }] };
+    const base = { race: 'human' as const, commander: { id: 'aldric' as const, x: 1, y: 0 }, units: [{ type: 'warrior' as const, x: 0, y: 0 }] };
     assert.equal(validateArmy({ ...base, cards: [{ card: 'meteor', turn: 1 }, { card: 'chain-lightning', turn: 2 }] }).ok, false, 'energía');
     assert.equal(validateArmy({ ...base, cards: [{ card: 'sylvaran-storm', turn: 1 }] }).ok, false, 'raza');
     assert.equal(validateArmy({ ...base, cards: [{ card: 'fire-arrow', turn: 1 }, { card: 'fire-arrow', turn: 2 }] }).ok, false, 'repetida');
@@ -47,9 +47,18 @@ describe('validateArmy', () => {
   });
 
   it('descarta campos extra al normalizar', () => {
-    const result = validateArmy({ race: 'elf', units: [{ type: 'warrior', x: 0, y: 0, hp: 999 }], gold: 1e9 });
+    const result = validateArmy({ race: 'elf', commander: { id: 'lyra', x: 1, y: 1, hp: 9 }, units: [{ type: 'warrior', x: 0, y: 0, hp: 999 }], gold: 1e9 });
     assert.ok(result.ok);
-    assert.deepEqual(result.army, { race: 'elf', units: [{ type: 'warrior', x: 0, y: 0 }], cards: [] });
+    assert.deepEqual(result.army, { race: 'elf', commander: { id: 'lyra', x: 1, y: 1 }, units: [{ type: 'warrior', x: 0, y: 0 }], cards: [] });
+  });
+
+  it('exige un comandante de la misma raza, en su zona y sin compartir casilla', () => {
+    const units = [{ type: 'warrior' as const, x: 0, y: 0 }];
+    assert.equal(validateArmy({ race: 'elf', units }).ok, false, 'sin comandante');
+    assert.equal(validateArmy({ race: 'elf', commander: { id: 'grok', x: 1, y: 1 }, units }).ok, false, 'otra raza');
+    assert.equal(validateArmy({ race: 'elf', commander: { id: 'lyra', x: 3, y: 1 }, units }).ok, false, 'fuera de zona');
+    assert.equal(validateArmy({ race: 'elf', commander: { id: 'lyra', x: 0, y: 0 }, units }).ok, false, 'casilla ocupada');
+    assert.equal(validateArmy({ race: 'elf', commander: { id: 'nadie', x: 1, y: 1 }, units }).ok, false, 'desconocido');
   });
 });
 
@@ -132,6 +141,71 @@ describe('razas y cartas', () => {
   });
 });
 
+describe('comandantes, jefes y nuevas mecánicas', () => {
+  const withCommander = (army: Army, id: Army['commander']): Army => ({ ...army, commander: id });
+
+  it('el comandante lanza su habilidad una sola vez y aplica su pasiva', () => {
+    const army = withCommander({ race: 'human', units: [{ type: 'warrior', x: 2, y: 0 }] }, { id: 'aldric', x: 1, y: 0 });
+    const r = simulate(army, horde);
+    const abilities = events(r).filter((e) => e.kind === 'ability' && e.side === 0);
+    assert.equal(abilities.length, 1);
+    const warrior = r.initial.find((u) => u.side === 0 && u.type === 'warrior')!;
+    assert.equal(warrior.maxHp, statsFor('warrior', 'human').hp + 2, 'pasiva Escuadra');
+    assert.equal(r.initial.find((u) => u.side === 0 && u.special)?.special?.kind, 'commander');
+  });
+
+  it('si cae el comandante, su ejército pierde 1 de ataque (moral rota)', () => {
+    const fragile = withCommander({ race: 'elf', units: [{ type: 'guardian', x: 0, y: 5 }] }, { id: 'lyra', x: 2, y: 0 });
+    const r = simulate(fragile, horde);
+    const morale = events(r).find((e) => e.kind === 'morale');
+    assert.ok(morale && morale.kind === 'morale' && morale.side === 0);
+    const after = r.frames.find((f) => f.events.includes(morale))!;
+    const guardian = after.units.find((u) => u.side === 0 && u.type === 'guardian');
+    if (guardian) assert.ok(guardian.status.includes('broken'));
+  });
+
+  it('el escudo absorbe daño antes que la vida', () => {
+    const r = simulate(lone('dwarf', 'guardian', { cards: [{ card: 'bulwark', turn: 1 }] }), lone('orc', 'knight'));
+    assert.ok(events(r).some((e) => e.kind === 'shield'));
+    assert.ok(events(r).some((e) => (e.kind === 'attack' || e.kind === 'spell') && (e.absorbed ?? 0) > 0));
+  });
+
+  it('el veneno hace daño cada turno durante su duración', () => {
+    const r = simulate(lone('undead', 'healer', { cards: [{ card: 'poison-cloud', turn: 1 }] }), lone('dwarf', 'healer'));
+    const ticks = events(r).filter((e) => e.kind === 'poison');
+    assert.equal(ticks.length, 3);
+  });
+
+  it('las espinas devuelven daño cuerpo a cuerpo', () => {
+    const r = simulate(lone('human', 'guardian', { cards: [{ card: 'thorn-armor', turn: 1 }] }), lone('orc', 'warrior'));
+    const thorns = events(r).find((e) => e.kind === 'thorns');
+    assert.ok(thorns && thorns.kind === 'thorns' && thorns.damage === 2);
+  });
+
+  it('debilitar reduce el daño que hace el rival', () => {
+    const base = simulate(lone('elf', 'warrior'), lone('orc', 'warrior'));
+    const cursed = simulate(lone('elf', 'warrior', { cards: [{ card: 'weakness-curse', turn: 1 }] }), lone('orc', 'warrior'));
+    const firstHit = (r: BattleResult) => events(r).find((e) => e.kind === 'attack' && e.id === 1);
+    const a = firstHit(base);
+    const b = firstHit(cursed);
+    assert.ok(a && b && a.kind === 'attack' && b.kind === 'attack');
+    assert.equal(b.damage, a.damage - 1);
+  });
+
+  it('un jefe usa su ataque especial y se contabiliza el daño recibido', () => {
+    const raid = { race: 'orc' as const, units: [], bosses: [{ id: 'ash-dragon' as const, x: 1, y: 2 }] };
+    const r = simulate(PRESET_ARMIES.cavalry.army, raid);
+    assert.equal(r.bossHp, BOSSES['ash-dragon'].stats.hp);
+    assert.ok(r.bossDamage > 0);
+    assert.ok(events(r).some((e) => e.kind === 'ability' && e.side === 1 && e.name === 'Aliento de Fuego'));
+  });
+
+  it('todas las cartas nuevas tienen categoría y los comandantes cubren todas las razas', () => {
+    for (const id of CARD_IDS) assert.ok(CATEGORIES[CARDS[id].category], id);
+    for (const race of RACE_IDS) assert.ok(commandersForRace(race).length >= 2, race);
+  });
+});
+
 describe('simulate', () => {
   it('es determinista', () => {
     for (const a of presets) assert.deepEqual(simulate(a, wall), simulate(a, wall));
@@ -139,7 +213,7 @@ describe('simulate', () => {
 
   it('refleja al lado derecho del tablero', () => {
     const r = simulate(horde, wall);
-    assert.ok(r.initial.filter((u) => u.side === 0).every((u) => u.x === 2));
+    assert.ok(r.initial.filter((u) => u.side === 0).every((u) => u.x <= 2));
     assert.ok(r.initial.filter((u) => u.side === 1).every((u) => u.x >= 5));
   });
 

@@ -1,4 +1,6 @@
+import type { BossId } from './bosses.ts';
 import { CARDS, isCardId, type CardId } from './cards.ts';
+import { COMMANDERS, isCommanderId, type CommanderId } from './commanders.ts';
 import { isArmorId, type ArmorId } from './cosmetics.ts';
 import { isRace, type Race } from './races.ts';
 import {
@@ -22,12 +24,26 @@ export interface CardPlay {
   turn: number;
 }
 
+/** Posición del comandante, en la misma zona de despliegue que las unidades. */
+export interface CommanderPlacement {
+  id: CommanderId;
+  x: number;
+  y: number;
+}
+
 export interface Army {
   race: Race;
+  /** Obligatorio en ejércitos de jugadores (validateArmy lo exige). */
+  commander?: CommanderPlacement;
   units: Placement[];
   cards?: CardPlay[];
   /** Cosmético: no afecta a la simulación. */
   armor?: ArmorId;
+}
+
+/** Ejército de la campaña: puede incluir jefes de incursión. */
+export interface BattleArmy extends Army {
+  bosses?: Array<{ id: BossId; x: number; y: number }>;
 }
 
 export type ValidationResult = { ok: true; army: Army; cost: number; energy: number } | { ok: false; error: string };
@@ -63,6 +79,16 @@ export function validateArmy(input: unknown): ValidationResult {
   }
   if (cost > BUDGET) return { ok: false, error: `Coste ${cost} supera el presupuesto de ${BUDGET}.` };
 
+  const rawCommander = (input as Army).commander;
+  if (typeof rawCommander !== 'object' || rawCommander === null) return { ok: false, error: 'Tu ejército necesita un comandante.' };
+  const { id: commanderId, x: cx, y: cy } = rawCommander;
+  if (!isCommanderId(commanderId)) return { ok: false, error: 'Comandante desconocido.' };
+  if (COMMANDERS[commanderId].race !== race) return { ok: false, error: `${COMMANDERS[commanderId].name} no pertenece a esta raza.` };
+  if (!Number.isInteger(cx) || cx < 0 || cx >= DEPLOY_COLUMNS || !Number.isInteger(cy) || cy < 0 || cy >= BOARD_HEIGHT) {
+    return { ok: false, error: 'Coloca a tu comandante en tu zona de despliegue.' };
+  }
+  if (occupied.has(`${cx},${cy}`)) return { ok: false, error: 'El comandante no puede compartir casilla.' };
+
   const rawCards = (input as Army).cards ?? [];
   if (!Array.isArray(rawCards)) return { ok: false, error: '"cards" debe ser una lista.' };
   if (rawCards.length > MAX_CARDS) return { ok: false, error: `Máximo ${MAX_CARDS} cartas.` };
@@ -86,7 +112,7 @@ export function validateArmy(input: unknown): ValidationResult {
   if (legendaries > MAX_LEGENDARY_CARDS) return { ok: false, error: `Máximo ${MAX_LEGENDARY_CARDS} carta legendaria.` };
   if (energy > ENERGY) return { ok: false, error: `Las cartas cuestan ${energy} de energía; el máximo es ${ENERGY}.` };
 
-  const army: Army = { race, units, cards };
+  const army: Army = { race, commander: { id: commanderId, x: cx, y: cy }, units, cards };
   if (armor !== undefined) army.armor = armor;
   return { ok: true, army, cost, energy };
 }
@@ -108,6 +134,7 @@ export function canonicalArmy(army: Army): string {
   const cards = [...(army.cards ?? [])].sort((a, b) => a.card.localeCompare(b.card));
   return [
     `race=${army.race}`,
+    `commander=${army.commander ? `${army.commander.id}@${army.commander.x},${army.commander.y}` : ''}`,
     `armor=${army.armor ?? ''}`,
     `units=${units.map((u) => `${u.type}@${u.x},${u.y}`).join(';')}`,
     `cards=${cards.map((c) => `${c.card}@${c.turn}`).join(';')}`,

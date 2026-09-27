@@ -63,16 +63,17 @@ export function isRace(value: unknown): value is Race {
 }
 
 /** Estadísticas de una unidad con los modificadores de su raza aplicados. */
-export function statsFor(type: UnitType, race: Race): UnitStats {
+export function statsFor(type: UnitType, race: Race, extra: StatMods = {}): UnitStats {
   const base = UNITS[type];
   const mods = RACES[race].mods[type] ?? {};
+  const sum = (k: keyof StatMods) => (mods[k] ?? 0) + (extra[k] ?? 0);
   return {
     ...base,
-    hp: base.hp + (mods.hp ?? 0),
-    attack: base.attack + (mods.attack ?? 0),
-    range: Math.max(1, base.range + (mods.range ?? 0)),
-    speed: Math.max(1, base.speed + (mods.speed ?? 0)),
-    armor: base.armor + (mods.armor ?? 0),
-    heal: base.heal > 0 ? Math.max(1, base.heal + (mods.heal ?? 0)) : 0,
+    hp: base.hp + sum('hp'),
+    attack: base.attack + sum('attack'),
+    range: Math.max(1, base.range + sum('range')),
+    speed: Math.max(1, base.speed + sum('speed')),
+    armor: base.armor + sum('armor'),
+    heal: base.heal > 0 ? Math.max(1, base.heal + sum('heal')) : 0,
   };
 }

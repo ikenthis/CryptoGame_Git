@@ -16,7 +16,7 @@ export const MAX_LEGENDARY_CARDS = 1;
 /** Último turno en el que se puede programar una carta. */
 export const CARD_TURN_MAX = 10;
 
-export type UnitType = 'warrior' | 'archer' | 'knight' | 'guardian' | 'mage' | 'healer' | 'golem';
+export type UnitType = 'warrior' | 'archer' | 'knight' | 'guardian' | 'mage' | 'healer' | 'golem' | 'commander' | 'boss';
 
 export interface UnitStats {
   name: string;
@@ -74,6 +74,17 @@ export const UNITS: Record<UnitType, UnitStats> = {
     name: 'Gólem Ancestral', letter: 'Ω', cost: 5, hp: 24, attack: 4, range: 1, speed: 1, armor: 3,
     chargeBonus: 0, splash: 0, ignoresArmor: false, heal: 0, summonOnly: true,
     description: 'Coloso de piedra rúnica. Solo aparece con la carta legendaria enana.',
+  },
+  // Plantillas: las estadísticas reales salen de commanders.ts y bosses.ts.
+  commander: {
+    name: 'Comandante', letter: '♛', cost: 6, hp: 1, attack: 0, range: 1, speed: 1, armor: 0,
+    chargeBonus: 0, splash: 0, ignoresArmor: false, heal: 0, summonOnly: true,
+    description: 'Líder del ejército.',
+  },
+  boss: {
+    name: 'Jefe', letter: '☠', cost: 20, hp: 1, attack: 0, range: 1, speed: 1, armor: 0,
+    chargeBonus: 0, splash: 0, ignoresArmor: false, heal: 0, summonOnly: true,
+    description: 'Criatura de incursión.',
   },
 };
 
