@@ -1,12 +1,18 @@
 {
-  "races/human": "art/races/human.webp",
-  "races/elf": "art/races/elf.webp",
-  "races/undead": "art/races/undead.webp",
-  "races/orc": "art/races/orc.webp",
-  "commanders/seraphine": "art/commanders/seraphine.webp",
-  "commanders/lyra": "art/commanders/lyra.webp",
   "commanders/aldric": "art/commanders/aldric.webp",
+  "commanders/lyra": "art/commanders/lyra.webp",
   "commanders/magthar": "art/commanders/magthar.webp",
   "commanders/morvath": "art/commanders/morvath.webp",
-  "scenes/keyart": "art/scenes/keyart.webp"
+  "commanders/seraphine": "art/commanders/seraphine.webp",
+  "races/elf": "art/races/elf.webp",
+  "races/human": "art/races/human.webp",
+  "races/orc": "art/races/orc.webp",
+  "races/undead": "art/races/undead.webp",
+  "scenes/keyart": "art/scenes/keyart.webp",
+  "units/elf-archer": "art/units/elf-archer.webp",
+  "units/human-archer": "art/units/human-archer.webp",
+  "units/human-knight": "art/units/human-knight.webp",
+  "units/human-warrior": "art/units/human-warrior.webp",
+  "units/orc-warrior": "art/units/orc-warrior.webp",
+  "units/undead-mage": "art/units/undead-mage.webp"
 }
