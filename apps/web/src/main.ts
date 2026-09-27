@@ -2,8 +2,8 @@ import {
   ARMORS, ARMOR_IDS, BOSSES, BUDGET, CARDS, CARD_TURN_MAX, CATEGORIES, COMMANDERS, DEPLOY_COLUMNS, ENERGY, MAX_CARDS,
   MAX_LEGENDARY_CARDS, MAX_SUPPLIES, MAX_UNITS, MISSIONS, PRESET_ARMIES, RACES, RACE_IDS, RARITIES, RESOURCES, RESOURCE_IDS,
   UNITS, UNIT_TYPES,
-  armyCost, cardEnergy, cardsForRace, commandersForRace, finishMission, missionById, missionUnlocked, ownsCard,
-  ownsCommander, rewardSummary, simulate, startMission, statsFor, validateArmy,
+  armyCost, cardEnergy, cardsForRace, commandersForRace, missionById, missionUnlocked, ownsCard,
+  ownsCommander, rewardSummary, simulate, statsFor, validateArmy,
   type ArmorId, type Army, type BattleArmy, type BattleResult, type Card, type CardCategory, type CardPlay,
   type CommanderId, type CommanderPlacement, type Placement, type Race, type Side, type Special, type UnitType,
 } from '@gentium/engine';
@@ -12,9 +12,10 @@ import { RACE_EMBLEM } from './art/icons.ts';
 import { getSprite } from './art/sprites.ts';
 import { RARITY_COLORS } from './art/theme.ts';
 import { sound } from './audio/sound.ts';
-import { initTelegram, type TelegramWebApp } from './platform/telegram.ts';
+import { initTelegram, launchedFromTelegram, type TelegramWebApp } from './platform/telegram.ts';
 import { Scene, type BuildArmy, type Look } from './scene/scene.ts';
-import { getProfile, onProfile, rng, setProfile, today } from './state/profile.ts';
+import { api, connect, connectGuest, getSession, market, online, perform, playMission, verified, type Listing, type MissionRun } from './state/backend.ts';
+import { getProfile, onProfile, today } from './state/profile.ts';
 import { renderCampaign } from './ui/campaign.ts';
 import { cardElement } from './ui/card.ts';
 import { commanderElement } from './ui/commander.ts';
@@ -41,12 +42,12 @@ let cardFilter: CardCategory | 'all' = 'all';
 /** Contra quién se juega: un rival de práctica o una misión de campaña. */
 let target: { kind: 'preset' | 'mission'; id: string } = { kind: 'preset', id: 'horde' };
 let battling = false;
+/** Ventas del mercado entre jugadores (se cargan al abrir la pestaña). */
+let listings: Listing[] = [];
 const SPEEDS = [1, 2, 4];
 let speedIndex = 0;
 /** Presente solo cuando el juego se abre como Mini App de Telegram. */
 let tg: TelegramWebApp | null = null;
-/** Sesión verificada por el servidor (hoy, vía Telegram). */
-let session: { token: string; playerId: string; name: string } | null = null;
 
 const scene = new Scene($<HTMLCanvasElement>('board'));
 const statusEl = $('status');
@@ -332,7 +333,8 @@ function renderSidePanels(): void {
   const profile = getProfile();
   renderCampaign($('campaign'), { profile, selected: target.kind === 'mission' ? target.id : null, onPrepare: prepareMission });
   renderMarket($('market'), {
-    profile, setProfile, rng, day: today(),
+    profile, perform, day: today(),
+    p2p: { online: online(), verified: verified(), me: getSession()?.playerId ?? '', listings, market, reload: loadListings },
     onLoot: (view) => { sound.play(view.commanders?.length || view.cards?.some((c) => CARDS[c].rarity === 'legendary') ? 'legendary' : 'card'); showLoot(view); },
     onError: (message) => setStatus(message, 'loss'),
   });
@@ -474,7 +476,7 @@ scene.hooks = {
 
 let lastResult: BattleResult | null = null;
 /** Misión en curso: sus recompensas se entregan al terminar la animación. */
-let pendingMission: string | null = null;
+let pendingMission: { id: string; run: MissionRun } | null = null;
 
 function playBattle(result: BattleResult, armies: [BattleArmy, BattleArmy], mySide: Side, labels: [string, string]): void {
   battling = true;
@@ -513,10 +515,9 @@ function finishBattle(): void {
   setStatus(r.winner === null ? 'Empate.' : `${replayLabels[r.winner]} gana ${why}.`, (tone || '') as '' | 'win' | 'loss');
 
   if (pendingMission) {
-    const id = pendingMission;
+    const { id, run } = pendingMission;
     pendingMission = null;
-    const outcome = finishMission(getProfile(), id, r);
-    setProfile(outcome.profile);
+    const outcome = run.finish();
     const m = missionById(id);
     const subtitle = m.kind === 'raid'
       ? `Daño al jefe: ${outcome.damagePct}%${outcome.won ? ' · ¡Jefe derrotado!' : ''}`
@@ -540,19 +541,28 @@ function stopBattle(): void {
   refresh();
 }
 
-$('simulate').onclick = () => {
+let launching = false;
+$('simulate').onclick = async () => {
+  if (launching) return;
   const check = validateArmy(currentArmy());
   if (!check.ok) return setStatus(check.error);
   const { army: enemy, name } = enemyArmy();
   if (target.kind === 'mission') {
+    // Con servidor, la misión se resuelve allí (las recompensas no dependen del navegador).
+    launching = true;
     try {
-      setProfile(startMission(getProfile(), target.id, Date.now()));
+      const id = target.id;
+      const run = await playMission(id, check.army, enemy);
+      pendingMission = { id, run };
+      playBattle(run.result, [check.army, enemy], 0, ['Tu ejército', name]);
     } catch (err) {
-      return setStatus((err as Error).message, 'loss');
+      setStatus((err as Error).message, 'loss');
+    } finally {
+      launching = false;
     }
-    pendingMission = target.id;
+    return;
   }
-  // Se simula en el navegador con el mismo motor que usa el servidor.
+  // Práctica: se simula en el navegador con el mismo motor que usa el servidor.
   playBattle(simulate(check.army, enemy), [check.army, enemy], 0, ['Tu ejército', name]);
 };
 $('edit').onclick = () => { stopBattle(); setStatus('Ajusta tu ejército y vuelve a la batalla.'); };
@@ -573,6 +583,7 @@ function openTab(name: Tab): void {
   for (const t of $('tabs').querySelectorAll<HTMLButtonElement>('button')) t.classList.toggle('active', t.dataset.tab === name);
   for (const panel of document.querySelectorAll<HTMLElement>('[data-panel]')) panel.hidden = panel.dataset.panel !== name;
   if (name === 'tournaments') loadTournaments();
+  if (name === 'market') loadListings();
 }
 
 for (const tab of $('tabs').querySelectorAll<HTMLButtonElement>('button')) {
@@ -588,14 +599,6 @@ try {
   walletInput.value = localStorage.getItem('gentium.wallet') ?? '';
 } catch { /* almacenamiento no disponible */ }
 
-async function api<T>(path: string, init?: RequestInit): Promise<T> {
-  const headers: Record<string, string> = { 'content-type': 'application/json' };
-  if (session) headers.authorization = `Bearer ${session.token}`;
-  const res = await fetch(path, { ...init, headers });
-  const body = await res.json().catch(() => ({ error: `Error ${res.status}` }));
-  if (!res.ok) throw new Error(body.error ?? `Error ${res.status}`);
-  return body as T;
-}
 
 interface TournamentView {
   id: string; name: string; status: string; closesAt: string; entryFee: number; pool: number; entryCount: number;
@@ -608,7 +611,8 @@ const escapeHtml = (s: string) => s.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt
 
 $('submit').onclick = async () => {
   const out = $('submit-status');
-  const playerId = session?.playerId ?? playerInput.value.trim();
+  // Con Telegram, la identidad la pone el servidor; como invitado se usa el nombre escrito.
+  const playerId = verified() ? getSession()!.playerId : playerInput.value.trim();
   const wallet = walletInput.value.trim();
   try {
     localStorage.setItem('gentium.player', playerId);
@@ -782,16 +786,39 @@ initTelegram().then(async (app) => {
   app.BackButton.onClick(() => stopBattle());
   syncTelegramButtons();
   try {
-    session = await api<{ token: string; playerId: string; name: string }>('/api/auth/telegram', {
+    const s = await api<{ token: string; playerId: string; name: string }>('/api/auth/telegram', {
       method: 'POST', body: JSON.stringify({ initData: app.initData }),
     });
-    playerInput.value = session.name;
+    await connect(s);
+    playerInput.value = s.name;
     playerInput.readOnly = true;
-    $('submit-status').textContent = `Conectado con Telegram como ${session.name}.`;
+    $('submit-status').textContent = `Conectado con Telegram como ${s.name}.`;
+    onConnected();
   } catch (err) {
     $('submit-status').textContent = `No se pudo iniciar sesión con Telegram: ${(err as Error).message}`;
   }
 });
+
+// Fuera de Telegram (y fuera de la demo), el progreso se guarda en el servidor
+// con una sesión de invitado. Si no hay servidor, se sigue jugando en local.
+if (!__DEMO__ && !launchedFromTelegram()) {
+  void connectGuest().then((ok) => { if (ok) onConnected(); });
+}
+
+function onConnected(): void {
+  renderOpponents();
+  renderAll();
+}
+
+// ---------- Mercado entre jugadores ----------
+
+async function loadListings(): Promise<void> {
+  if (!online()) return;
+  try {
+    listings = await market.list();
+    renderSidePanels();
+  } catch { /* se reintenta al volver a la pestaña */ }
+}
 
 if (__DEMO__) {
   // Demo sin servidor: los torneos se anuncian en lugar de conectarse.

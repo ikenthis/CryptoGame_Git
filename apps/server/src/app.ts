@@ -139,8 +139,10 @@ export function createApp(options: AppOptions): Server {
       const wallet = body.wallet ? String(body.wallet).trim() : undefined;
       if (wallet && !WALLET.test(wallet)) fail(400, 'La wallet debe ser una dirección 0x de 40 caracteres hexadecimales.');
       // Con sesión, la identidad sale del token y no del cuerpo de la petición.
-      const session = sessionFrom(req);
-      if (!session && options.requireAuth) fail(401, 'Inicia sesión para inscribirte.');
+      // Solo una sesión verificada (Telegram) fija la identidad; un invitado se inscribe con el nombre que escriba.
+      const raw = sessionFrom(req);
+      const session = raw?.sub.startsWith(VERIFIED_PREFIX) ? raw : null;
+      if (!session && options.requireAuth) fail(401, 'Entra con Telegram para inscribirte.');
       const playerId = session?.sub ?? String(body.playerId ?? '');
       if (!PLAYER_ID.test(playerId)) fail(400, 'playerId: 3-42 caracteres alfanuméricos, "-" o "_".');
       if (!session && (playerId.startsWith(VERIFIED_PREFIX) || playerId.startsWith('guest-'))) {
