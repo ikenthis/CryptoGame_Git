@@ -16,6 +16,7 @@ puede fabricarse objetos. Incluye música y efectos de sonido sintetizados, un t
 primera batalla y funciona como **Mini App de Telegram**.
 
 - Diseño, economía, aspectos legales y hoja de ruta: [docs/GDD.md](docs/GDD.md)
+- Propuesta 2.0, guerra por oleadas (inspirada en Hearthstone): [docs/DISENO-OLEADAS.md](docs/DISENO-OLEADAS.md)
 - Publicar en Telegram (bot, webhook y anuncios automáticos): [docs/TELEGRAM.md](docs/TELEGRAM.md)
 - **Checklist de lanzamiento** (despliegue, Telegram, prueba y anuncio): [docs/LAUNCH.md](docs/LAUNCH.md)
 - Plan de lanzamiento de prueba, marketing y premios: [docs/MARKETING.md](docs/MARKETING.md)
