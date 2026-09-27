@@ -4,6 +4,7 @@ import {
   armyCost, cardEnergy, cardsForRace, simulate, statsFor, validateArmy,
   type ArmorId, type Army, type BattleResult, type Card, type CardPlay, type Placement, type Race, type Side, type UnitType,
 } from '@bastion/engine';
+import { artUrl, loadArt } from './art/assets.ts';
 import { RACE_EMBLEM } from './art/icons.ts';
 import { getSprite } from './art/sprites.ts';
 import { RARITY_COLORS } from './art/theme.ts';
@@ -68,21 +69,33 @@ function refreshScene(): void {
 
 // ---------- Razas ----------
 
+/** Retrato ilustrado de la raza si existe; si no, su emblema vectorial. */
+function raceBadge(id: Race): string {
+  const portrait = artUrl(`races/${id}`);
+  return portrait ? `<span class="emblem portrait"><img src="${portrait}" alt=""></span>` : `<span class="emblem">${RACE_EMBLEM[id]}</span>`;
+}
+
 function renderRaces(): void {
   $('races').replaceChildren(...RACE_IDS.map((id) => {
     const b = document.createElement('button');
     b.className = `race race-${id}${id === race ? ' active' : ''}`;
-    b.innerHTML = `<span class="emblem">${RACE_EMBLEM[id]}</span><span><strong>${RACES[id].name}</strong><small>${RACES[id].realm}</small></span>`;
+    b.innerHTML = `${raceBadge(id)}<span><strong>${RACES[id].name}</strong><small>${RACES[id].realm}</small></span>`;
     b.onclick = () => {
       if (battling) return;
       race = id;
       deck = deck.filter((c) => CARDS[c.card].race === null || CARDS[c.card].race === race);
       renderAll();
+// Las ilustraciones generadas se cargan aparte; al llegar, se vuelve a pintar.
+loadArt().then(() => {
+  const keyart = artUrl('scenes/keyart');
+  if (keyart) document.body.style.setProperty('--keyart', `url("${keyart}")`);
+  renderAll();
+});
     };
     return b;
   }));
   const info = RACES[race];
-  $('race-trait').innerHTML = `<span class="emblem">${RACE_EMBLEM[race]}</span><div><strong>${info.realm}</strong> · <em>${info.trait}</em><br>${info.description}</div>`;
+  $('race-trait').innerHTML = `${raceBadge(race)}<div><strong>${info.realm}</strong> · <em>${info.trait}</em><br>${info.description}</div>`;
 }
 
 // ---------- Unidades ----------
@@ -171,6 +184,12 @@ function renderDeck(): void {
       deck.push({ card: card.id, turn: Math.min(CARD_TURN_MAX, deck.length + 1) });
       setStatus(`${card.name} añadida. Elige en qué turno se lanza.`);
       renderAll();
+// Las ilustraciones generadas se cargan aparte; al llegar, se vuelve a pintar.
+loadArt().then(() => {
+  const keyart = artUrl('scenes/keyart');
+  if (keyart) document.body.style.setProperty('--keyart', `url("${keyart}")`);
+  renderAll();
+});
     };
     return el;
   }));
@@ -412,3 +431,9 @@ async function showStandings(id: string, container: HTMLElement): Promise<void> 
 }
 
 renderAll();
+// Las ilustraciones generadas se cargan aparte; al llegar, se vuelve a pintar.
+loadArt().then(() => {
+  const keyart = artUrl('scenes/keyart');
+  if (keyart) document.body.style.setProperty('--keyart', `url("${keyart}")`);
+  renderAll();
+});

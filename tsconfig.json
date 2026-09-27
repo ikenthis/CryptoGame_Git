@@ -12,5 +12,5 @@
     "erasableSyntaxOnly": true,
     "skipLibCheck": true
   },
-  "include": ["packages/*/src", "packages/*/test", "apps/server/src", "apps/server/test", "apps/web/src"]
+  "include": ["packages/*/src", "packages/*/test", "apps/server/src", "apps/server/test", "apps/web/src", "tools"]
 }
