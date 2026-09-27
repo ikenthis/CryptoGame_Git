@@ -3,6 +3,7 @@ import {
   type ArmorId, type BattleEvent, type BattleResult, type CardId, type Placement, type Race, type Side,
   type StatusEffect, type UnitState, type UnitType,
 } from '@bastion/engine';
+import type { Sfx } from '../audio/sound.ts';
 import { getSprite } from '../art/sprites.ts';
 import { ARMOR_ART, RACE_ART, RARITY_COLORS, STATUS_COLORS, TEAM_COLORS } from '../art/theme.ts';
 
@@ -25,6 +26,7 @@ export interface SceneHooks {
   onCard?: (side: Side, card: CardId, fizzled: boolean) => void;
   onCardEnd?: () => void;
   onFinish?: () => void;
+  onSfx?: (name: Sfx, intensity?: number) => void;
 }
 
 interface DUnit {
@@ -245,6 +247,7 @@ export class Scene {
           if (hitDone) return;
           hitDone = true;
           this.hit(ev.target, ev.damage, type === 'mage' ? RACE_ART[this.lookOf(ev.id).race].magic : '#ffffff', ev.charge ? 'charge' : 'normal');
+          this.sfx(ev.charge ? 'heavy' : 'hit', ev.damage / 4);
           if (ev.charge) {
             this.shake = Math.max(this.shake, 9);
             this.floatText('¡CARGA!', b.x, b.y - CELL * 0.8, '#ffd24a', 20);
@@ -255,6 +258,7 @@ export class Scene {
           onStart: () => {
             a = this.pos(ev.id);
             b = this.pos(ev.target);
+            this.sfx(type === 'archer' ? 'arrow' : type === 'mage' ? 'magic' : 'swing');
           },
           onUpdate: (p) => {
             const u = this.units.get(ev.id);
@@ -284,7 +288,10 @@ export class Scene {
         return {
           duration: concurrent ? prevDuration : 250,
           concurrent,
-          onEnd: () => this.hit(ev.target, ev.damage, '#c792ea', 'normal'),
+          onEnd: () => {
+            this.hit(ev.target, ev.damage, '#c792ea', 'normal');
+            this.sfx('hit', 0.5);
+          },
         };
       }
       case 'heal': {
@@ -297,6 +304,7 @@ export class Scene {
           onStart: () => {
             b = this.pos(ev.target);
             a = ev.id === null ? b : this.pos(ev.id);
+            this.sfx('heal');
           },
           onEnd: () => {
             const u = this.units.get(ev.target);
@@ -336,6 +344,7 @@ export class Scene {
             const u = this.units.get(ev.id);
             if (!u) return;
             const { x, y } = this.pos(ev.id);
+            this.sfx('death');
             const col = ARMOR_ART[u.look.armor].glow ?? RACE_ART[u.look.race].cloth;
             this.burst(x, y, col, 26, 2.6, 3.5, 0.06, 800);
             this.burst(x, y - CELL * 0.2, '#ffffff', 8, 0.8, 5, -0.05, 1200);
@@ -354,6 +363,7 @@ export class Scene {
           duration: 900,
           onStart: () => {
             const { x, y } = this.pos(ev.id);
+            this.sfx('rise');
             this.smoke(x, y, '#4b2a73', 30);
             this.burst(x, y, '#5ff5d6', 22, 1.6, 3, -0.04, 1000);
           },
@@ -381,6 +391,7 @@ export class Scene {
           duration: legendary ? 1650 : 1150,
           onStart: () => {
             this.hooks.onCard?.(ev.side, ev.card, ev.fizzled);
+            this.sfx(legendary ? 'legendary' : 'card');
             const col = RARITY_COLORS[def.rarity].main;
             const x = ev.side === 0 ? PAD + CELL : VIEW_W - PAD - CELL;
             this.burst(x, VIEW_H / 2, col, legendary ? 70 : 30, legendary ? 5 : 3, 4, 0, 1200);
@@ -405,6 +416,7 @@ export class Scene {
           onStart: () => {
             const u = this.units.get(ev.id);
             if (u && !u.status.includes(ev.stat)) u.status.push(ev.stat);
+            this.sfx('buff');
             const { x, y } = this.pos(ev.id);
             this.burst(x, y + CELL * 0.2, color, 16, 1.4, 3, -0.06, 900);
             this.floatText(`+${ev.amount} ${STAT_LABEL[ev.stat]}`, x, y - CELL * 0.75, color, 15);
@@ -421,6 +433,7 @@ export class Scene {
           onStart: () => {
             const u = this.units.get(ev.id);
             if (u && !u.status.includes('stunned')) u.status.push('stunned');
+            this.sfx('freeze');
             const { x, y } = this.pos(ev.id);
             this.burst(x, y, STATUS_COLORS.stunned, 30, 2.4, 3.5, 0.02, 900);
             this.floatText('¡CONGELADO!', x, y - CELL * 0.8, STATUS_COLORS.stunned, 17);
@@ -444,6 +457,7 @@ export class Scene {
           const u = this.newUnit({ id: ev.id, side, type, x: ev.x, y: ev.y, hp: ev.hp, maxHp: summon ? ev.hp : maxHp, status: [] });
           u.scale = 0.2;
           this.units.set(ev.id, u);
+          this.sfx(summon ? 'summon' : 'rise');
           this.burst(px(ev.x), py(ev.y), color, 40, 3, 4, -0.02, 1000);
           this.shake = Math.max(this.shake, summon ? 8 : 4);
           this.floatText(summon ? '¡INVOCACIÓN!' : '¡REVIVE!', px(ev.x), py(ev.y) - CELL * 0.85, color, 18);
@@ -482,12 +496,17 @@ export class Scene {
     let b = { x: 0, y: 0 };
     const impact = (color: string, big = false) => {
       this.hit(ev.target, ev.damage, color, big ? 'charge' : 'normal');
+      this.sfx(big ? 'explosion' : 'hit', ev.damage / 4);
       if (big) this.shake = Math.max(this.shake, 14);
     };
     if (card === 'meteor') {
       return {
         duration: 620, concurrent,
-        onStart: () => { b = this.pos(ev.target); a = { x: b.x + (ev.side === 0 ? -1 : 1) * CELL * 2.2, y: -CELL }; },
+        onStart: () => {
+          b = this.pos(ev.target);
+          a = { x: b.x + (ev.side === 0 ? -1 : 1) * CELL * 2.2, y: -CELL };
+          this.sfx('fireball');
+        },
         onEnd: () => {
           impact('#ffb347', true);
           this.burst(b.x, b.y, '#ff7a1a', 60, 5, 5, 0.08, 1100);
@@ -520,6 +539,7 @@ export class Scene {
           b = this.pos(ev.target);
           a = getChain() ?? { x: casterX, y: b.y };
           setChain(b);
+          this.sfx('lightning');
           this.flash = { alpha: 0.25, color: '#d9c2ff' };
         },
         onEnd: () => impact('#e2c2ff'),
@@ -529,7 +549,10 @@ export class Scene {
     if (card === 'sylvaran-storm') {
       return {
         duration: 700, concurrent,
-        onStart: () => { b = this.pos(ev.target); },
+        onStart: () => {
+          b = this.pos(ev.target);
+          this.sfx('arrow');
+        },
         onEnd: () => {
           impact('#b6f5c9');
           this.burst(b.x, b.y, '#7dffb5', 16, 2.2, 3, 0.05, 700);
@@ -548,7 +571,11 @@ export class Scene {
     const color = fire ? '#ff7a1a' : RARITY_COLORS[CARDS[card].rarity].main;
     return {
       duration: 420, concurrent,
-      onStart: () => { b = this.pos(ev.target); a = { x: casterX, y: b.y - CELL * 0.6 }; },
+      onStart: () => {
+        b = this.pos(ev.target);
+        a = { x: casterX, y: b.y - CELL * 0.6 };
+        this.sfx(fire ? 'fireball' : 'magic', 0.6);
+      },
       onEnd: () => {
         impact(color);
         this.burst(b.x, b.y, color, 24, 2.6, 3.5, 0.03, 700);
@@ -640,6 +667,10 @@ export class Scene {
 
   private sparkle(u: DUnit): void {
     this.burst(px(u.x), py(u.y), '#ffd27a', 16, 1.8, 2.6, -0.02, 600);
+  }
+
+  private sfx(name: Sfx, intensity = 1): void {
+    this.hooks.onSfx?.(name, intensity);
   }
 
   private floatText(text: string, x: number, y: number, color: string, size: number): void {

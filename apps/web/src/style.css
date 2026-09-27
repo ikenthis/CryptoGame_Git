@@ -49,6 +49,7 @@ header h1 {
   color: transparent;
   filter: drop-shadow(0 2px 0 #000) drop-shadow(0 0 18px rgba(232, 193, 100, 0.35));
 }
+.header-actions { display: flex; gap: 8px; justify-content: center; margin-top: 10px; }
 header p { margin: 8px 0 0; color: var(--muted); font-family: var(--display); letter-spacing: 0.5px; }
 
 main {

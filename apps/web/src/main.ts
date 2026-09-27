@@ -7,6 +7,7 @@ import {
 import { artUrl, loadArt } from './art/assets.ts';
 import { RACE_EMBLEM } from './art/icons.ts';
 import { getSprite } from './art/sprites.ts';
+import { sound } from './audio/sound.ts';
 import { RARITY_COLORS } from './art/theme.ts';
 import { Scene, type Look } from './scene/scene.ts';
 import { cardElement } from './ui/card.ts';
@@ -50,10 +51,15 @@ canvas.addEventListener('click', (ev) => {
   if (!cell) return;
   if (cell.x >= DEPLOY_COLUMNS) return setStatus('Solo puedes desplegar en tu zona (columnas iluminadas).');
   const existing = placements.findIndex((p) => p.x === cell.x && p.y === cell.y);
-  if (existing >= 0) placements.splice(existing, 1);
-  else if (placements.length >= MAX_UNITS) return setStatus(`Máximo ${MAX_UNITS} unidades.`);
+  if (existing >= 0) {
+    placements.splice(existing, 1);
+    sound.play('remove');
+  } else if (placements.length >= MAX_UNITS) return setStatus(`Máximo ${MAX_UNITS} unidades.`);
   else if (armyCost({ units: placements }) + UNITS[selected].cost > BUDGET) return setStatus('No te alcanza el oro.');
-  else placements.push({ type: selected, x: cell.x, y: cell.y });
+  else {
+    placements.push({ type: selected, x: cell.x, y: cell.y });
+    sound.play('place');
+  }
   setStatus('Clic sobre una unidad para retirarla.');
   refresh();
 });
@@ -85,12 +91,6 @@ function renderRaces(): void {
       race = id;
       deck = deck.filter((c) => CARDS[c.card].race === null || CARDS[c.card].race === race);
       renderAll();
-// Las ilustraciones generadas se cargan aparte; al llegar, se vuelve a pintar.
-loadArt().then(() => {
-  const keyart = artUrl('scenes/keyart');
-  if (keyart) document.body.style.setProperty('--keyart', `url("${keyart}")`);
-  renderAll();
-});
     };
     return b;
   }));
@@ -182,14 +182,9 @@ function renderDeck(): void {
       const why = cardBlocker(card);
       if (why) return setStatus(why);
       deck.push({ card: card.id, turn: Math.min(CARD_TURN_MAX, deck.length + 1) });
+      sound.play(card.rarity === 'legendary' ? 'legendary' : 'card', 0.6);
       setStatus(`${card.name} añadida. Elige en qué turno se lanza.`);
       renderAll();
-// Las ilustraciones generadas se cargan aparte; al llegar, se vuelve a pintar.
-loadArt().then(() => {
-  const keyart = artUrl('scenes/keyart');
-  if (keyart) document.body.style.setProperty('--keyart', `url("${keyart}")`);
-  renderAll();
-});
     };
     return el;
   }));
@@ -250,6 +245,7 @@ let replaySide: Side = 0;
 
 scene.hooks = {
   onTurn: (turn) => {
+    sound.play('turn', 0.6);
     turnBox.hidden = false;
     turnBox.textContent = `Turno ${turn}`;
     turnBox.classList.remove('pop');
@@ -271,6 +267,7 @@ scene.hooks = {
     if (wrap) wrap.classList.add('out');
   },
   onFinish: () => finishBattle(),
+  onSfx: (name, intensity) => sound.play(name, intensity),
 };
 
 let lastResult: BattleResult | null = null;
@@ -286,6 +283,7 @@ function playBattle(result: BattleResult, looks: [Look, Look], mySide: Side, lab
   scene.ghost = null;
   scene.speed = SPEEDS[speedIndex];
   scene.play(result, looks, mySide);
+  sound.setMusic('battle');
   setStatus(`${labels[mySide]} (azul) contra ${labels[mySide === 0 ? 1 : 0]} (rojo)`);
   refresh();
 }
@@ -300,10 +298,13 @@ function finishBattle(): void {
   resultBox.className = `result ${tone}`;
   resultBox.innerHTML = `<div class="result-title">${title}</div><div class="result-sub">${r.winner === null ? 'Nadie cede terreno' : `${replayLabels[r.winner]} gana ${why}`}</div>`;
   resultBox.hidden = false;
+  sound.setMusic('menu');
+  if (r.winner !== null) sound.play(r.winner === replaySide ? 'victory' : 'defeat');
   setStatus(r.winner === null ? 'Empate.' : `${replayLabels[r.winner]} gana ${why}.`, (tone || '') as '' | 'win' | 'loss');
 }
 
 function stopBattle(): void {
+  if (battling) sound.setMusic('menu');
   battling = false;
   resultBox.hidden = true;
   turnBox.hidden = true;
@@ -429,6 +430,28 @@ async function showStandings(id: string, container: HTMLElement): Promise<void> 
   }
   container.append(table);
 }
+
+// ---------- Sonido ----------
+
+const muteButton = $<HTMLButtonElement>('mute');
+const renderMute = () => {
+  muteButton.textContent = sound.isMuted ? '🔇 Sonido' : '🔊 Sonido';
+  muteButton.setAttribute('aria-pressed', String(sound.isMuted));
+};
+muteButton.onclick = () => {
+  sound.unlock();
+  sound.setMuted(!sound.isMuted);
+  renderMute();
+};
+renderMute();
+// El navegador solo permite audio después de una interacción del usuario.
+window.addEventListener('pointerdown', () => {
+  sound.unlock();
+  if (!battling) sound.setMusic('menu');
+}, { once: true });
+document.addEventListener('click', (ev) => {
+  if ((ev.target as HTMLElement).closest('button, .race, .unit, .armor')) sound.play('click');
+});
 
 renderAll();
 // Las ilustraciones generadas se cargan aparte; al llegar, se vuelve a pintar.
