@@ -110,6 +110,15 @@ export class Announcer {
     await this.post(arenaText(t), '⚔ Inscribir mi ejército');
   }
 
+  async closingSoon(t: Tournament): Promise<void> {
+    const hours = Math.max(1, Math.round((new Date(t.closesAt).getTime() - Date.now()) / 3_600_000));
+    await this.post([
+      `⏳ <b>Quedan ${hours} ${hours === 1 ? 'hora' : 'horas'}</b> para el cierre de <b>${escapeHtml(t.name)}</b>`,
+      '',
+      `${t.entries.length} ${t.entries.length === 1 ? 'ejército inscrito' : 'ejércitos inscritos'}. Los ejércitos siguen ocultos: aún puedes sorprenderlos a todos.`,
+    ].join('\n'), '⚔ Inscribirme ahora');
+  }
+
   async tournamentClosed(t: Tournament, names: (id: string) => string): Promise<void> {
     if (!t.entries.length) return; // una arena vacía no se anuncia
     await this.post(resultsText(t, names), '⚔ Jugar la próxima');

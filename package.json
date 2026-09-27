@@ -14,7 +14,9 @@
     "dev:web": "npm run dev -w apps/web",
     "build:web": "npm run build -w apps/web",
     "start": "npm run build:web && node apps/server/src/main.ts",
-    "build:demo": "cd apps/web && node build-demo.mjs"
+    "build:demo": "cd apps/web && node build-demo.mjs",
+    "telegram:setup": "node --env-file-if-exists=.env tools/telegram/setup.ts",
+    "telegram:announce": "node --env-file-if-exists=.env tools/telegram/announce.ts"
   },
   "engines": {
     "node": ">=22.18"

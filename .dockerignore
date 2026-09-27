@@ -1,0 +1,10 @@
+node_modules
+**/node_modules
+apps/web/dist
+apps/web/dist-demo
+contracts
+docs
+.git
+.env
+data
+*.log

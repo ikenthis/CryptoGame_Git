@@ -10,11 +10,14 @@ como las cartas, se pueden vender como objetos del juego (ERC-1155).
 
 Tiene **campaña** con misiones e **incursiones contra jefes** que dan
 materiales y Fichas Extrañas, y un **Mercado Negro** con sobres, transmutación,
-forja y un mercader diario. Incluye música y efectos de sonido sintetizados, un tutorial guiado de la
+forja, un mercader diario y **mercado entre jugadores**. El servidor es la
+autoridad sobre la colección: las misiones se simulan en el servidor y nadie
+puede fabricarse objetos. Incluye música y efectos de sonido sintetizados, un tutorial guiado de la
 primera batalla y funciona como **Mini App de Telegram**.
 
 - Diseño, economía, aspectos legales y hoja de ruta: [docs/GDD.md](docs/GDD.md)
-- Publicar en Telegram: [docs/TELEGRAM.md](docs/TELEGRAM.md)
+- Publicar en Telegram (bot, webhook y anuncios automáticos): [docs/TELEGRAM.md](docs/TELEGRAM.md)
+- **Checklist de lanzamiento** (despliegue, Telegram, prueba y anuncio): [docs/LAUNCH.md](docs/LAUNCH.md)
 - Plan de lanzamiento de prueba, marketing y premios: [docs/MARKETING.md](docs/MARKETING.md)
 
 ## Estructura
@@ -22,9 +25,10 @@ primera batalla y funciona como **Mini App de Telegram**.
 | Carpeta | Qué es |
 |---|---|
 | `packages/engine` | Motor en TypeScript: reglas, razas, cartas, cosméticos, simulación, torneo todos contra todos y reparto de premios |
-| `apps/server` | API HTTP (Node sin framework): torneos con ejércitos ocultos, cierre, clasificación, repeticiones, login de Telegram y servidor del cliente compilado |
+| `apps/server` | API HTTP (Node sin framework): torneos con ejércitos ocultos, perfiles y progresión, mercado entre jugadores, login de Telegram e invitados, bot y anuncios de Telegram, límites por IP y servidor del cliente compilado |
 | `apps/web` | Cliente web (Vite + canvas): sprites procedurales, efectos de batalla, sonido, tutorial, cartas, armería, torneos e integración con Telegram |
 | `tools/art` | Generador de ilustraciones con IA (cartas, retratos de raza e imagen principal) |
+| `tools/telegram` | Configuración del bot (`npm run telegram:setup`) y anuncios del canal (`npm run telegram:announce`) |
 | `contracts` | `TournamentEscrow.sol` (escrow de entradas USDC) y `GentiumItems.sol` (cartas y armaduras ERC-1155 con suministro limitado y regalías), con Foundry |
 
 ## Arrancar en local
@@ -48,7 +52,9 @@ privada. Al cerrar un torneo, `GET /api/tournaments/<id>/payouts.csv` (con el
 token de admin) da puesto, jugador, wallet e importe para pagar a mano.
 
 Producción (API y cliente en un solo servidor): `cp .env.example .env`, rellenar
-y `npm run build:web && node --env-file=.env apps/server/src/main.ts`.
+y `npm run build:web && node --env-file=.env apps/server/src/main.ts`, o con
+Docker: `docker build -t bellum-gentium . && docker run -p 8787:8787 --env-file .env -v gentium-data:/data bellum-gentium`.
+Pasos completos en [docs/LAUNCH.md](docs/LAUNCH.md).
 
 ## Ilustraciones con IA
 
@@ -81,7 +87,7 @@ Los importes van en unidades mínimas de USDC (1 USDC = 1.000.000).
 ## Tests
 
 ```bash
-npm test                 # motor, API, login de Telegram y generador de arte (node:test)
+npm test                 # motor, API, progresión, mercado, bot de Telegram y herramientas (node:test)
 npm run typecheck
 node packages/engine/scripts/balance.ts   # informe de balance
 cd contracts && forge test                # contratos (usa OpenZeppelin de node_modules)
@@ -89,10 +95,15 @@ cd contracts && forge test                # contratos (usa OpenZeppelin de node_
 
 ## Estado
 
-Es un prototipo (fase 0). Antes de manejar dinero real faltan:
+Listo para un **lanzamiento gratuito** en Telegram: campaña, incursiones,
+colección y mercado en el servidor, arena diaria con premios patrocinados
+pagados a mano y anuncios automáticos. La integración continua
+(`.github/workflows/ci.yml`) ejecuta tipos, tests, compilación y contratos.
 
-- wallet embebida para la web (el login de Telegram ya está hecho);
-- base de datos en vez de memoria y archivo JSON;
+Antes de manejar dinero de los jugadores faltan:
+
+- wallet embebida para la web;
+- base de datos en vez de archivos JSON (a partir de unos miles de jugadores);
 - verificador de pagos on-chain (`verifyEntryPayment`);
 - auditoría del contrato;
 - revisión legal por jurisdicción.

@@ -9,6 +9,14 @@ import { TournamentStore } from './store.ts';
 import { Announcer, TelegramBot, type TelegramConfig } from './telegram.ts';
 
 const env = process.env;
+// En producción no se arranca con secretos temporales: se perderían sesiones y el acceso de admin.
+if (env.NODE_ENV === 'production') {
+  const missing = ['ADMIN_TOKEN', 'SESSION_SECRET', 'DATA_DIR'].filter((k) => !env[k]);
+  if (missing.length) {
+    console.error(`Faltan variables obligatorias en producción: ${missing.join(', ')}.`);
+    process.exit(1);
+  }
+}
 const port = Number(env.PORT ?? 8787);
 const adminToken = env.ADMIN_TOKEN ?? randomBytes(16).toString('hex');
 if (!env.ADMIN_TOKEN) console.log(`ADMIN_TOKEN no definido; token temporal: ${adminToken}`);
@@ -48,8 +56,20 @@ function ensureDailyArena(now: Date): void {
   void announcer.arenaOpened(t);
 }
 
+// Recordatorio en el canal cuando faltan 2 horas para el cierre de la arena.
+const REMINDER_MS = 2 * 3_600_000;
+const reminded = new Set<string>();
+
 async function tick(): Promise<void> {
   const now = new Date();
+  for (const t of store.list()) {
+    const left = new Date(t.closesAt).getTime() - now.getTime();
+    // Ventana de 5 minutos: un reinicio del servidor fuera de ella no repite el aviso.
+    if (!t.result && t.entryFee === 0 && left <= REMINDER_MS && left > REMINDER_MS - 300_000 && !reminded.has(t.id)) {
+      reminded.add(t.id);
+      await announcer.closingSoon(t);
+    }
+  }
   for (const id of store.closeDue(now)) {
     console.log(`Torneo cerrado: ${id}`);
     // Primero los resultados y después la nueva arena, para que el canal lea en orden.
@@ -64,7 +84,7 @@ const sessionSecret = env.SESSION_SECRET ?? randomBytes(32).toString('hex');
 if (!env.SESSION_SECRET) console.log('SESSION_SECRET no definido: las sesiones caducarán al reiniciar el servidor.');
 const webDist = env.WEB_DIST ?? fileURLToPath(new URL('../../web/dist', import.meta.url));
 
-createApp({
+const server = createApp({
   store,
   profiles,
   market,
@@ -82,3 +102,12 @@ createApp({
   if (!env.TELEGRAM_BOT_TOKEN) console.log('TELEGRAM_BOT_TOKEN no definido: el inicio de sesión con Telegram está desactivado.');
   else if (!telegram) console.log('PUBLIC_URL no definido: el bot de Telegram no responderá ni publicará anuncios.');
 });
+
+// Parada limpia (despliegues y reinicios): los datos ya están guardados en cada cambio.
+for (const signal of ['SIGTERM', 'SIGINT'] as const) {
+  process.on(signal, () => {
+    console.log(`${signal} recibido: cerrando el servidor.`);
+    server.close(() => process.exit(0));
+    setTimeout(() => process.exit(0), 5_000).unref();
+  });
+}
