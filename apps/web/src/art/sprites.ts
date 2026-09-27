@@ -58,15 +58,25 @@ export function getSprite(type: UnitType, race: Race, armor: ArmorId, facing: 1 
 
 /** Sprite ilustrado: cabe en la caja con los pies en (50, 92); las armaduras mágicas añaden su resplandor. */
 function drawIllustrated(p: Painter, art: HTMLCanvasElement, big: boolean): void {
-  const maxH = big ? 90 : 82, maxW = 92;
+  const maxH = big ? 90 : 84, maxW = 94;
   const k = Math.min(maxH / art.height, maxW / art.width);
   const w = art.width * k, h = art.height * k;
+  const { c } = p;
+  // Contorno claro para que las figuras oscuras se lean sobre el tablero, y el
+  // resplandor de la armadura mágica encima.
+  c.save();
+  c.shadowColor = 'rgba(255, 238, 200, 0.85)';
+  c.shadowBlur = 3;
+  c.drawImage(art, 50 - w / 2, 92 - h, w, h);
+  c.restore();
   if (p.a.glow) {
-    p.c.shadowColor = p.a.glow;
-    p.c.shadowBlur = 10;
+    c.save();
+    c.shadowColor = p.a.glow;
+    c.shadowBlur = 10;
+    c.globalAlpha = 0.9;
+    c.drawImage(art, 50 - w / 2, 92 - h, w, h);
+    c.restore();
   }
-  p.c.drawImage(art, 50 - w / 2, 92 - h, w, h);
-  p.c.shadowBlur = 0;
 }
 
 /** Vacía la caché (tras cargar las ilustraciones, para que se usen). */

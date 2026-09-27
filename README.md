@@ -69,11 +69,13 @@ REPLICATE_API_TOKEN=r8_... npm run art -- --provider replicate   # Flux 1.1 Pro
 npm run art -- --only cards/meteor,races --force       # regenerar algunas
 ```
 
-Los **sprites del tablero** (5 razas × 6 tropas + 10 comandantes) siguen el
-estilo de [docs/art-reference.webp](docs/art-reference.webp): 2D pintado, figura
-entera sobre fondo liso. El juego recorta el fondo al cargarlos y, si falta
-alguno, dibuja la figura vectorial. Todas las imágenes se reducen y se guardan en
-WebP (sprites a 256 px, unos 15–30 KB); `--keep-size` lo desactiva.
+Los **sprites del tablero** (5 razas × 6 tropas + 10 comandantes) mezclan anime
+japonés de JRPG con fantasía clásica pintada, con la paleta de
+[docs/art-reference.webp](docs/art-reference.webp). El fondo se quita en local
+con un modelo de segmentación (`@imgly/background-removal-node`), así que se
+guardan ya transparentes; sin él se usa un recorte por relleno. Si falta algún
+sprite, el juego dibuja la figura vectorial. Todas las imágenes se reducen y se
+guardan en WebP (sprites a 256 px, unos 15 KB); `--keep-size` lo desactiva.
 Con gpt-image-1 cuestan unos 0,20 USD cada una; con Pollinations, nada.
 Revisa las condiciones de uso del proveedor antes de vender objetos con ese arte
 y deja claro que es arte generado con IA.

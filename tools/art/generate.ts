@@ -11,6 +11,7 @@ import { existsSync } from 'node:fs';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { cutoutBackground } from './cutout.ts';
 import { ART_JOBS, type ArtJob } from './prompts.ts';
 
 export interface Provider {
@@ -67,19 +68,37 @@ export function replicateProvider(apiToken: string, baseUrl = 'https://api.repli
 }
 
 /**
- * Pollinations: gratuito y sin clave (modelo Flux). Sin fondo transparente: los
- * sprites se piden sobre blanco y el juego recorta el fondo al cargarlos.
+ * Pollinations: gratuito y sin clave. Sin fondo transparente: los sprites se
+ * piden sobre blanco y el juego recorta el fondo al cargarlos. El plan gratuito
+ * añade una marca en la esquina inferior derecha, que aquí se elimina.
  */
-export function pollinationsProvider(baseUrl = 'https://image.pollinations.ai', model = 'flux'): Provider {
+export function pollinationsProvider(baseUrl = 'https://image.pollinations.ai', model?: string): Provider {
   return {
-    name: `pollinations:${model}`,
+    name: `pollinations${model ? `:${model}` : ''}`,
     async generate(job) {
       const [width, height] = job.size.split('x');
-      const seed = [...job.id].reduce((h, ch) => (h * 31 + ch.charCodeAt(0)) >>> 0, 7);
-      const query = new URLSearchParams({ width, height, model, seed: String(seed), nologo: 'true', enhance: 'false' });
-      return download(`${baseUrl}/prompt/${encodeURIComponent(job.prompt)}?${query}`);
+      const seed = [...job.id].reduce((h, ch) => (h * 31 + ch.charCodeAt(0)) >>> 0, 7) % 1_000_000;
+      const query = new URLSearchParams({ width, height, seed: String(seed), nologo: 'true', ...(model ? { model } : {}) });
+      const image = await download(`${baseUrl}/prompt/${encodeURIComponent(job.prompt)}?${query}`);
+      return removeWatermark(image, job);
     },
   };
+}
+
+/** Escenas: recorta la franja inferior con la marca. Los sprites la pierden al recortar el fondo. */
+export async function removeWatermark(image: Buffer, job: ArtJob): Promise<Buffer> {
+  let sharp: typeof import('sharp');
+  try {
+    sharp = (await import('sharp')).default;
+  } catch {
+    return image;
+  }
+  if (job.transparent) return image;
+  const img = sharp(image);
+  const meta = await img.metadata();
+  if (!meta.width || !meta.height) return image;
+  const w = meta.width, h = meta.height;
+  return img.extract({ left: 0, top: 0, width: w, height: Math.round(h * 0.91) }).png().toBuffer();
 }
 
 export interface GenerateOptions {
@@ -160,13 +179,50 @@ async function download(url: string): Promise<Buffer> {
 /** Tamaño final en el juego: los sprites se ven a unos 90 px, así que 256 px sobran. */
 export const MAX_SIDE = { sprite: 256, portrait: 320, wide: 960 } as const;
 
-/** Reduce cada imagen y la guarda como WebP ligero (necesita el paquete sharp). */
-export async function sharpOptimizer(): Promise<(image: Buffer, job: ArtJob) => Promise<Buffer>> {
+/**
+ * Reduce cada imagen y la guarda como WebP ligero (necesita el paquete sharp).
+ * Los sprites sin transparencia se recortan del fondo aquí mismo; con
+ * `clearWatermark` también se vacía la esquina de la marca de Pollinations.
+ */
+export async function sharpOptimizer(opts: { clearWatermark?: boolean } = {}): Promise<(image: Buffer, job: ArtJob) => Promise<Buffer>> {
   const { default: sharp } = await import('sharp');
-  return (image, job) => {
+  return async (image, job) => {
+    let input = sharp(image);
+    if (job.transparent) {
+      const { data, info } = await sharp(image).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+      const cornerAlpha = data[3];
+      const ai = cornerAlpha < 250 ? null : await aiCutout(image);
+      if (ai) {
+        input = sharp(ai).trim();
+      } else {
+        const cut = cornerAlpha < 250
+          ? { data, width: info.width, height: info.height, channels: 4 } // ya trae transparencia
+          : cutoutBackground({ data, width: info.width, height: info.height, channels: 4 },
+            opts.clearWatermark ? { clear: { x: 0.62, y: 0.9, w: 0.38, h: 0.1 } } : {});
+        input = sharp(Buffer.from(cut.data), { raw: { width: cut.width, height: cut.height, channels: 4 } }).trim();
+      }
+    }
     const side = job.transparent ? MAX_SIDE.sprite : job.size === '1024x1024' ? MAX_SIDE.portrait : MAX_SIDE.wide;
-    return sharp(image).resize(side, side, { fit: 'inside', withoutEnlargement: true }).webp({ quality: 80, alphaQuality: 90, effort: 6 }).toBuffer();
+    return input.resize(side, side, { fit: 'inside', withoutEnlargement: true }).webp({ quality: 82, alphaQuality: 90, effort: 6 }).toBuffer();
   };
+}
+
+/**
+ * Quita el fondo con un modelo de segmentación que corre en local
+ * (@imgly/background-removal-node). Si no está instalado, devuelve null y se usa
+ * el recorte por relleno (cutout.ts), menos preciso con fondos degradados.
+ */
+async function aiCutout(image: Buffer): Promise<Buffer | null> {
+  let removeBackground: (typeof import('@imgly/background-removal-node'))['removeBackground'];
+  try {
+    ({ removeBackground } = await import('@imgly/background-removal-node'));
+  } catch {
+    return null;
+  }
+  const { default: sharp } = await import('sharp');
+  const png = await sharp(image).png().toBuffer();
+  const blob = await removeBackground(new Blob([new Uint8Array(png)], { type: 'image/png' }), { model: 'medium', output: { format: 'image/png' } });
+  return Buffer.from(await blob.arrayBuffer());
 }
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -212,7 +268,7 @@ async function main(): Promise<void> {
 
   console.log(`Generando ${jobs.length} ilustraciones con ${provider.name} en ${outDir}`);
   const report = await generateAll({ provider, outDir, jobs, force: flag('force'), concurrency: which === 'pollinations' ? 1 : 3,
-    optimize: flag('keep-size') ? undefined : await sharpOptimizer(),
+    optimize: flag('keep-size') ? undefined : await sharpOptimizer({ clearWatermark: which === 'pollinations' }),
   });
   console.log(`\nListo: ${report.generated.length} generadas, ${report.skipped.length} ya existían, ${report.failed.length} fallidas.`);
   if (report.failed.length) process.exitCode = 1;

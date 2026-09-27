@@ -25,33 +25,42 @@ export const ART_STYLE = [
 
 /**
  * Sprites del tablero: anime japonés de videojuego (JRPG/gacha) mezclado con
- * fantasía clásica pintada, con la paleta de docs/art-reference.webp.
+ * fantasía clásica pintada, con la paleta de docs/art-reference.webp. Prompts
+ * cortos y directos: los modelos pequeños (el gratuito) se pierden con los largos.
  */
-export const SPRITE_STYLE = [
-  'Anime JRPG character art fused with classic high-fantasy oil painting: the expressive faces, dynamic heroic pose and crisp cel-shaded lighting of a Japanese gacha game,',
-  'combined with the ornate armor, rich textures and dramatic painterly color of classic western fantasy illustration.',
-  'Full body chibi-free proportions, three-quarter view facing right, whole figure visible from head to feet, centered, confident battle stance,',
-  'bold clean lineart, vibrant saturated colors, glowing magical accents, strong rim light.',
-  'Isolated on a plain flat pure white background, no ground, no shadow, no scenery, no other characters.',
-  'Absolutely no text, letters, logos, watermarks or frames.',
-].join(' ');
+export const SPRITE_ANIME = 'anime style';
+export const SPRITE_STYLE = 'JRPG gacha character art, cel shading, classic fantasy painting colors, vibrant, heroic pose, plain light grey background, no text';
 
-/** Aspecto de cada raza sin escenario (para sprites sobre fondo liso). */
+/** Aspecto de cada raza en pocas palabras (para sprites sobre fondo liso). */
 const SPRITE_RACE: Record<Race, string> = {
-  human: 'a human of the Kingdom of Aurelia in polished steel and gold plate armor with a royal blue tabard and a golden sun emblem',
-  elf: 'an elf of Sylvaran with pointed ears and long pale hair, graceful silver and emerald leaf-shaped armor, violet magical accents',
-  orc: 'a green-skinned tusked orc of the Ash Clans in brutal blackened iron armor with bone horns and crimson war paint',
-  undead: 'an undead skeleton of the Shadow Legion with glowing green-cyan soul fire eyes, tattered purple cloth and a spiked crown',
-  dwarf: 'a stocky dwarf of Durnhal with a huge braided red beard in rune-etched bronze and orange armor with glowing rune lines',
+  human: 'human, blue and gold plate armor, sun emblem',
+  elf: 'elf with pointed ears and long silver hair, silver and emerald leaf armor',
+  orc: 'green-skinned orc with tusks, black spiked iron armor, red war paint',
+  undead: 'undead skeleton, glowing cyan eyes, purple tattered cloth, spiked crown',
+  dwarf: 'stocky dwarf with a huge braided red beard, bronze rune armor',
+};
+
+/** Rasgos propios de cada comandante para que se distingan de la tropa y entre sí. */
+const COMMANDER_LOOK: Record<string, string> = {
+  aldric: 'veteran male captain of the guard with a greatsword and a blue cape',
+  seraphine: 'radiant warrior queen with a golden crown, flowing golden hair and a blazing sword',
+  lyra: 'young female elf ranger with a glowing longbow and a green hooded cape',
+  thalanor: 'ancient male elf archdruid with antler crown and a living-wood staff',
+  grok: 'huge brutish male orc berserker with a giant bone club',
+  magthar: 'orc warlord in black spiked armor with a flaming greataxe and a wolf-fur cape',
+  velka: 'pale female necromancer with a skull staff and ghostly green flames',
+  morvath: 'skeletal lich king with a spiked crown, dark robes and a soul-fire staff',
+  borin: 'dwarf thane with a horned helm, huge braided red beard, hammer and shield',
+  brunhild: 'female dwarf runesmith with braided red hair and a glowing rune hammer',
 };
 
 const UNIT_LOOK: Record<Exclude<UnitType, 'golem' | 'commander' | 'boss'>, string> = {
-  warrior: 'a front-line foot soldier with a sword and a round shield',
-  archer: 'an archer drawing a longbow, quiver on the back',
-  knight: 'a heavy armored knight with a lance and a kite shield, on foot',
-  guardian: 'a massive shield-bearer with a tower shield and a war hammer',
-  mage: 'a battle mage holding a glowing staff, arcane energy swirling in the hand',
-  healer: 'a priestly healer with a holy staff and a softly glowing light in the hand',
+  warrior: 'warrior with sword and round shield',
+  archer: 'archer drawing a longbow',
+  knight: 'heavy knight with lance and kite shield',
+  guardian: 'shield guardian with a huge tower shield and hammer',
+  mage: 'battle mage with a glowing staff',
+  healer: 'priest healer with a holy staff, white and gold robes',
 };
 
 const RARITY_MOOD: Record<Rarity, string> = {
@@ -125,13 +134,13 @@ export const ART_JOBS: ArtJob[] = [
     id: `units/${race}-${type}`,
     size: '1024x1024',
     transparent: true,
-    prompt: `${SPRITE_STYLE} The character is ${UNIT_LOOK[type]}: ${SPRITE_RACE[race]}.`,
+    prompt: `${SPRITE_ANIME}, full body ${UNIT_LOOK[type]}, ${SPRITE_RACE[race]}, ${SPRITE_STYLE}`,
   }))),
   ...Object.values(COMMANDERS).map((c): ArtJob => ({
     id: `units/commander-${c.id}`,
     size: '1024x1024',
     transparent: true,
-    prompt: `${SPRITE_STYLE} The character is ${c.name}, ${c.title}, a commander: ${SPRITE_RACE[c.race]}, with a flowing cape and a distinctive crown or helm that marks a leader, more ornate than a common soldier.`,
+    prompt: `${SPRITE_ANIME}, full body ${COMMANDER_LOOK[c.id]}, ${SPRITE_RACE[c.race]}, commander with a flowing cape, ${c.rarity === 'legendary' ? 'golden divine aura, ' : ''}${SPRITE_STYLE}`,
   })),
   ...Object.values(BOSSES).map((b): ArtJob => ({
     id: `bosses/${b.id}`,

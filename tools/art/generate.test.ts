@@ -68,7 +68,7 @@ describe('prompts de arte', () => {
     assert.equal(sprites.length, RACE_IDS.length * troops.length + COMMANDER_IDS.length);
     assert.ok(sprites.some((j) => j.id === 'units/dwarf-guardian'));
     assert.ok(sprites.some((j) => j.id === 'units/commander-seraphine'));
-    for (const j of sprites) assert.match(j.prompt, /white background/);
+    for (const j of sprites) assert.match(j.prompt, /plain light grey background/);
   });
 });
 
@@ -131,9 +131,10 @@ describe('generateAll', () => {
       assert.deepEqual(report.generated, ['units/elf-archer']);
       const call = requests.findLast((r) => r.url?.startsWith('/prompt/'))!;
       const url = new URL(call.url, base);
-      assert.match(decodeURIComponent(url.pathname), /elf of Sylvaran/);
+      assert.match(decodeURIComponent(url.pathname), /^\/prompt\/anime style, full body archer.*elf with pointed ears/);
       assert.equal(url.searchParams.get('width'), '1024');
       assert.equal(url.searchParams.get('nologo'), 'true');
+      assert.equal(url.searchParams.get('model'), null);
       assert.ok(url.searchParams.get('seed'));
     } finally {
       await rm(dir, { recursive: true, force: true });
