@@ -11,6 +11,7 @@ import { sound } from './audio/sound.ts';
 import { RARITY_COLORS } from './art/theme.ts';
 import { Scene, type Look } from './scene/scene.ts';
 import { cardElement } from './ui/card.ts';
+import { Tutorial, tutorialSeen } from './ui/tutorial.ts';
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 
@@ -291,6 +292,7 @@ function playBattle(result: BattleResult, looks: [Look, Look], mySide: Side, lab
 function finishBattle(): void {
   const r = lastResult;
   if (!r) return;
+  battlesFinished++;
   castBox.replaceChildren();
   turnBox.hidden = true;
   const why = r.reason === 'timeout' ? 'por puntos al agotar los turnos' : `en ${r.turns} turnos`;
@@ -334,12 +336,16 @@ resultBox.onclick = () => { resultBox.hidden = true; };
 
 // ---------- Pestañas ----------
 
+type Tab = 'army' | 'cards' | 'armory' | 'tournaments';
+
+function openTab(name: Tab): void {
+  for (const t of $('tabs').querySelectorAll<HTMLButtonElement>('button')) t.classList.toggle('active', t.dataset.tab === name);
+  for (const panel of document.querySelectorAll<HTMLElement>('[data-panel]')) panel.hidden = panel.dataset.panel !== name;
+  if (name === 'tournaments') loadTournaments();
+}
+
 for (const tab of $('tabs').querySelectorAll<HTMLButtonElement>('button')) {
-  tab.onclick = () => {
-    for (const t of $('tabs').querySelectorAll('button')) t.classList.toggle('active', t === tab);
-    for (const panel of document.querySelectorAll<HTMLElement>('[data-panel]')) panel.hidden = panel.dataset.panel !== tab.dataset.tab;
-    if (tab.dataset.tab === 'tournaments') loadTournaments();
-  };
+  tab.onclick = () => openTab(tab.dataset.tab as Tab);
 }
 
 // ---------- Torneos ----------
@@ -453,7 +459,64 @@ document.addEventListener('click', (ev) => {
   if ((ev.target as HTMLElement).closest('button, .race, .unit, .armor')) sound.play('click');
 });
 
+// ---------- Tutorial ----------
+
+let battlesFinished = 0;
+const tutorial = new Tutorial([
+  {
+    title: '¡Bienvenido a Bastión!',
+    text: 'En un minuto ganarás tu primera batalla. Armas un ejército, lo colocas, eliges cartas… y la batalla se resuelve sola, sin azar: gana la mejor estrategia.',
+    next: 'Empezar',
+  },
+  {
+    target: '#races',
+    title: 'Elige tu raza',
+    text: 'Cada raza cambia a tus unidades y tiene su propia carta legendaria. Los Orcos son brutales; los Enanos, un muro de hierro.',
+  },
+  {
+    target: '#palette',
+    title: 'Tus unidades',
+    onEnter: () => openTab('army'),
+    text: 'El número dorado es su coste: tienes 12 de oro. Los valores en verde o rojo son las ventajas y desventajas de tu raza.',
+  },
+  {
+    target: '.board-wrap',
+    title: 'Despliega tu ejército',
+    text: 'Elige una unidad y haz clic en las columnas iluminadas. Coloca al menos 3: las resistentes delante (a la derecha) y las de distancia detrás.',
+    done: () => placements.length >= 3,
+  },
+  {
+    target: '[data-panel="cards"]',
+    title: 'Prepara una carta',
+    onEnter: () => openTab('cards'),
+    text: 'Añade una carta de la colección y elige en qué turno se lanza. El momento importa: una curación en el turno 1 no cura a nadie.',
+    done: () => deck.length >= 1,
+  },
+  {
+    target: '#simulate',
+    title: '¡A la batalla!',
+    text: 'Elige un rival y pulsa el botón. Puedes acelerar a ×2 o ×4, o saltar al final.',
+    done: () => battling,
+  },
+  {
+    target: '.board-wrap',
+    title: 'Observa y aprende',
+    text: 'Tu ejército lucha solo. El mismo planteamiento da siempre el mismo resultado: si pierdes, ajusta posiciones o cartas y vuelve a intentarlo.',
+    done: () => battlesFinished > 0,
+  },
+  {
+    target: '[data-tab="tournaments"]',
+    title: 'Compite de verdad',
+    text: 'Cuando estés listo, inscríbete gratis en la Arena diaria: tu ejército queda oculto y se enfrenta a todos los demás. Los mejores ganan premios.',
+  },
+]);
+$('tutorial-open').onclick = () => {
+  if (battling) stopBattle();
+  tutorial.start();
+};
+
 renderAll();
+if (!tutorialSeen()) tutorial.start();
 // Las ilustraciones generadas se cargan aparte; al llegar, se vuelve a pintar.
 loadArt().then(() => {
   const keyart = artUrl('scenes/keyart');

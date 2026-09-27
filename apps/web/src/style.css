@@ -297,3 +297,28 @@ td.num, th.num { text-align: right; }
   .result-title { font-size: 40px; }
   header h1 { font-size: 34px; }
 }
+
+/* ---------- Tutorial ---------- */
+
+.tut-dim { position: fixed; inset: 0; z-index: 1000; background: rgba(3, 4, 8, 0.72); }
+.tut-spot {
+  position: fixed; z-index: 1000; border-radius: 14px; pointer-events: none;
+  box-shadow: 0 0 0 9999px rgba(3, 4, 8, 0.66), 0 0 0 2px var(--gold), 0 0 34px rgba(232, 193, 100, 0.55);
+  transition: left 0.3s, top 0.3s, width 0.3s, height 0.3s;
+  animation: spot-pulse 1.8s ease-in-out infinite;
+}
+@keyframes spot-pulse { 50% { box-shadow: 0 0 0 9999px rgba(3, 4, 8, 0.66), 0 0 0 3px var(--gold-2), 0 0 48px rgba(232, 193, 100, 0.8); } }
+.tut-bubble {
+  position: fixed; z-index: 1001; padding: 14px 16px; border-radius: 14px;
+  background: linear-gradient(180deg, #232636, #151722); border: 1px solid var(--gold);
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.7), 0 0 24px rgba(232, 193, 100, 0.25);
+  transition: left 0.3s, top 0.3s;
+}
+.tut-bubble.enter { animation: bubble-in 0.35s cubic-bezier(0.2, 1.4, 0.4, 1); }
+@keyframes bubble-in { from { opacity: 0; transform: translateY(8px) scale(0.96); } }
+.tut-bubble h3 { margin: 2px 0 6px; font-size: 17px; }
+.tut-bubble p { margin: 0 0 12px; font-size: 14px; color: var(--text); }
+.tut-progress { font: 700 11px var(--display); color: var(--muted); letter-spacing: 1px; }
+.tut-actions { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.tut-hint { font: 700 12px var(--display); color: var(--gold); animation: hint-pulse 0.9s ease-in-out infinite alternate; }
+@keyframes hint-pulse { from { opacity: 0.55; } }
