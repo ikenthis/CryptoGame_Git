@@ -30,6 +30,8 @@ describe('API', () => {
     const { status, body } = await call('GET', '/api/config');
     assert.equal(status, 200);
     assert.equal(body.units.warrior.cost, 2);
+    assert.equal(body.cards['ancestral-golem'].race, 'dwarf');
+    assert.equal(Object.keys(body.races).length, 5);
   });
 
   it('simula contra un preset y valida el ejército', async () => {
@@ -78,6 +80,19 @@ describe('API', () => {
     await call('POST', '/api/tournaments', { id: 'copa-pago', closesAt: '2026-01-05T00:00:00Z', entryFee: 1_000_000, feeBps: 1000 }, true);
     const r = await call('POST', '/api/tournaments/copa-pago/entries', { playerId: 'ana', army: PRESET_ARMIES.horde.army });
     assert.equal(r.status, 503);
+  });
+
+  it('los torneos con cartas propias fallan cerrado sin verificador de inventario', async () => {
+    await call('POST', '/api/tournaments', { id: 'copa-coleccion', closesAt: '2026-01-05T00:00:00Z', cardPool: 'owned' }, true);
+    const withCards = await call('POST', '/api/tournaments/copa-coleccion/entries', { playerId: 'ana', army: PRESET_ARMIES.horde.army });
+    assert.equal(withCards.status, 503);
+    const noCards = { ...PRESET_ARMIES.horde.army, cards: [] };
+    assert.equal((await call('POST', '/api/tournaments/copa-coleccion/entries', { playerId: 'ana', army: noCards })).status, 200);
+  });
+
+  it('rechaza cartas de otra raza', async () => {
+    const army = { ...PRESET_ARMIES.horde.army, cards: [{ card: 'sylvaran-storm', turn: 1 }] };
+    assert.equal((await call('POST', '/api/simulate', { army, opponent: 'wall' })).status, 400);
   });
 
   it('rechaza comisiones por encima del máximo', async () => {

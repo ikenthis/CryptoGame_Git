@@ -1,8 +1,11 @@
 # Bastión
 
 Juego de estrategia por turnos con torneos de habilidad y premios en USDC.
-Armas un ejército con 12 de oro, lo colocas y la batalla se resuelve sola de
-forma **determinista**: sin azar, auditable y sin puntuaciones que falsificar.
+Eliges una de **5 razas** (Humanos, Elfos, Orcos, No-muertos, Enanos), armas un
+ejército con 12 de oro, preparas hasta 3 **cartas de acción** (de comunes a
+legendarias) y la batalla se resuelve sola de forma **determinista**: sin azar,
+auditable y sin puntuaciones que falsificar. Las **armaduras** son cosméticas y,
+como las cartas, se pueden vender como objetos del juego (ERC-1155).
 
 Diseño completo, economía, aspectos legales y hoja de ruta: [docs/GDD.md](docs/GDD.md).
 
@@ -10,10 +13,10 @@ Diseño completo, economía, aspectos legales y hoja de ruta: [docs/GDD.md](docs
 
 | Carpeta | Qué es |
 |---|---|
-| `packages/engine` | Motor en TypeScript: reglas, simulación, torneo todos contra todos y reparto de premios |
+| `packages/engine` | Motor en TypeScript: reglas, razas, cartas, cosméticos, simulación, torneo todos contra todos y reparto de premios |
 | `apps/server` | API HTTP (Node sin framework): torneos con ejércitos ocultos, cierre, clasificación y repeticiones |
-| `apps/web` | Cliente web (Vite + canvas): editor de ejército, práctica contra la IA y repeticiones |
-| `contracts` | `TournamentEscrow.sol`: escrow de entradas USDC con tope de comisión y reembolsos (Foundry) |
+| `apps/web` | Cliente web (Vite + canvas): sprites procedurales por raza y armadura, efectos de batalla, cartas, armería y torneos |
+| `contracts` | `TournamentEscrow.sol` (escrow de entradas USDC) y `BastionItems.sol` (cartas y armaduras ERC-1155 con suministro limitado y regalías), con Foundry |
 
 ## Arrancar en local
 
@@ -24,6 +27,9 @@ npm install
 ADMIN_TOKEN=dev npm run dev:server   # API en http://localhost:8787 (crea la arena diaria)
 npm run dev:web                      # cliente en http://localhost:5173
 ```
+
+Galería de sprites para arte: http://localhost:5173/galeria.html
+(`?mode=armors&type=knight` muestra todas las armaduras de una unidad).
 
 Crear y cerrar un torneo a mano:
 
@@ -42,7 +48,7 @@ Los importes van en unidades mínimas de USDC (1 USDC = 1.000.000).
 npm test                 # motor + API (node:test)
 npm run typecheck
 node packages/engine/scripts/balance.ts   # informe de balance
-cd contracts && forge test                # contrato
+cd contracts && forge test                # contratos (usa OpenZeppelin de node_modules)
 ```
 
 ## Estado

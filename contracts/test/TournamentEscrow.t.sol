@@ -2,14 +2,7 @@
 pragma solidity 0.8.28;
 
 import {TournamentEscrow, IERC20} from "../src/TournamentEscrow.sol";
-
-// Interfaz mínima de los cheatcodes de Foundry (evita depender de forge-std).
-interface Vm {
-    function prank(address) external;
-    function warp(uint256) external;
-    function expectRevert(bytes4) external;
-    function expectRevert(bytes calldata) external;
-}
+import {vm} from "./utils/Vm.sol";
 
 contract MockUSDC is IERC20 {
     mapping(address => uint256) public balanceOf;
@@ -39,8 +32,6 @@ contract MockUSDC is IERC20 {
 }
 
 contract TournamentEscrowTest {
-    Vm constant vm = Vm(address(uint160(uint256(keccak256("hevm cheat code")))));
-
     uint128 constant FEE = 1_000_000; // 1 USDC
     address constant ORGANIZER = address(0xA11CE);
     address constant TREASURY = address(0x7EA5);

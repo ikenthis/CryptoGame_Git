@@ -18,7 +18,7 @@ function ensureDailyArena(now: Date): void {
   closesAt.setUTCDate(closesAt.getUTCDate() + 1);
   store.create({
     id, name: `Arena diaria ${day}`, closesAt: closesAt.toISOString(), entryFee: 0,
-    sponsorPool: Number(process.env.DAILY_SPONSOR_POOL ?? 0), feeBps: 0,
+    sponsorPool: Number(process.env.DAILY_SPONSOR_POOL ?? 0), feeBps: 0, cardPool: 'open',
   });
 }
 

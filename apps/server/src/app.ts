@@ -1,8 +1,8 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import { timingSafeEqual } from 'node:crypto';
 import {
-  BOARD_HEIGHT, BOARD_WIDTH, BUDGET, DEPLOY_COLUMNS, MAX_FEE_BPS, MAX_TURNS, MAX_UNITS, PRESET_ARMIES, UNITS,
-  simulate, validateArmy, type Army,
+  ARMORS, BOARD_HEIGHT, BOARD_WIDTH, BUDGET, CARDS, CARD_TURN_MAX, DEPLOY_COLUMNS, ENERGY, MAX_CARDS, MAX_FEE_BPS,
+  MAX_TURNS, MAX_UNITS, PRESET_ARMIES, RACES, UNITS, simulate, validateArmy, type Army,
 } from '@bastion/engine';
 import { StoreError, commitmentFor, poolOf, type Tournament, type TournamentStore } from './store.ts';
 
@@ -16,6 +16,8 @@ export interface AppOptions {
    * inscripciones: es preferible fallar cerrado a regalar plazas.
    */
   verifyEntryPayment?: (t: Tournament, playerId: string, commitment: string, paymentTx: unknown) => Promise<boolean>;
+  /** Comprueba que el jugador posee las cartas que usa (torneos con cardPool 'owned'). */
+  verifyCardOwnership?: (playerId: string, army: Army) => Promise<boolean>;
 }
 
 const MAX_BODY_BYTES = 16 * 1024;
@@ -34,6 +36,7 @@ export function createApp(options: AppOptions): Server {
     ['GET', /^\/api\/config$/, async () => ({
       board: { width: BOARD_WIDTH, height: BOARD_HEIGHT, deployColumns: DEPLOY_COLUMNS },
       budget: BUDGET, maxUnits: MAX_UNITS, maxTurns: MAX_TURNS, units: UNITS,
+      energy: ENERGY, maxCards: MAX_CARDS, cardTurnMax: CARD_TURN_MAX, races: RACES, cards: CARDS, armors: ARMORS,
       presets: Object.fromEntries(Object.entries(PRESET_ARMIES).map(([id, p]) => [id, p.name])),
     })],
 
@@ -60,8 +63,10 @@ export function createApp(options: AppOptions): Server {
       const sponsorPool = nonNegativeInt(body.sponsorPool ?? 0, 'sponsorPool');
       const feeBps = nonNegativeInt(body.feeBps ?? 0, 'feeBps');
       if (feeBps > MAX_FEE_BPS) fail(400, `feeBps máximo: ${MAX_FEE_BPS}.`);
+      const cardPool = body.cardPool ?? 'open';
+      if (cardPool !== 'open' && cardPool !== 'owned') fail(400, "cardPool debe ser 'open' u 'owned'.");
       const t = store.create({
-        id, name: String(body.name ?? id).slice(0, 80), closesAt: closesAt.toISOString(), entryFee, sponsorPool, feeBps,
+        id, name: String(body.name ?? id).slice(0, 80), closesAt: closesAt.toISOString(), entryFee, sponsorPool, feeBps, cardPool,
       });
       return publicView(t, now());
     }],
@@ -74,6 +79,10 @@ export function createApp(options: AppOptions): Server {
       if (!PLAYER_ID.test(playerId)) fail(400, 'playerId: 3-42 caracteres alfanuméricos, "-" o "_".');
       const army = requireArmy(body.army);
       const t = store.get(id);
+      if (t.cardPool === 'owned' && (army.cards ?? []).length > 0) {
+        if (!options.verifyCardOwnership) fail(503, 'Los torneos con cartas propias aún no están habilitados.');
+        if (!(await options.verifyCardOwnership(playerId, army))) fail(403, 'No posees alguna de las cartas elegidas.');
+      }
       let salt: string | undefined;
       if (t.entryFee > 0) {
         // Torneo de pago: el cliente genera la sal, calcula el commitment, paga
@@ -129,6 +138,7 @@ export function createApp(options: AppOptions): Server {
 function publicView(t: Tournament, now: Date, detailed = false) {
   const base = {
     id: t.id, name: t.name, closesAt: t.closesAt, entryFee: t.entryFee, sponsorPool: t.sponsorPool, feeBps: t.feeBps,
+    cardPool: t.cardPool ?? 'open',
     status: t.result ? 'closed' : now >= new Date(t.closesAt) ? 'closing' : 'open',
     entryCount: t.entries.length, pool: poolOf(t),
   };

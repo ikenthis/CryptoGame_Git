@@ -1,187 +1,326 @@
 import {
-  BOARD_HEIGHT, BOARD_WIDTH, BUDGET, DEPLOY_COLUMNS, MAX_UNITS, PRESET_ARMIES, UNITS, UNIT_TYPES,
-  armyCost, simulate, type Army, type BattleResult, type Placement, type UnitState, type UnitType,
+  ARMORS, ARMOR_IDS, BUDGET, CARDS, CARD_TURN_MAX, DEPLOY_COLUMNS, ENERGY, MAX_CARDS, MAX_LEGENDARY_CARDS, MAX_UNITS,
+  PRESET_ARMIES, RACES, RACE_IDS, RARITIES, UNITS, UNIT_TYPES,
+  armyCost, cardEnergy, cardsForRace, simulate, statsFor, validateArmy,
+  type ArmorId, type Army, type BattleResult, type Card, type CardPlay, type Placement, type Race, type Side, type UnitType,
 } from '@bastion/engine';
-
-const CELL = 72;
-const FRAME_MS = 450;
-const COLORS = { blue: '#4c9aff', red: '#ff6b6b', gold: '#f5c451', line: '#2a3542', zone: 'rgba(76,154,255,0.10)', text: '#06121f' };
+import { RACE_EMBLEM } from './art/icons.ts';
+import { getSprite } from './art/sprites.ts';
+import { RARITY_COLORS } from './art/theme.ts';
+import { Scene, type Look } from './scene/scene.ts';
+import { cardElement } from './ui/card.ts';
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
-const canvas = $<HTMLCanvasElement>('board');
-const ctx = canvas.getContext('2d')!;
-const statusEl = $('status');
 
+// ---------- Estado ----------
+
+let race: Race = 'human';
+let armor: ArmorId = 'royal';
 let placements: Placement[] = [];
+let deck: CardPlay[] = [];
 let selected: UnitType = 'warrior';
-let replay: { result: BattleResult; frame: number; timer: number; mySide: 0 | 1 } | null = null;
+let battling = false;
+const SPEEDS = [1, 2, 4];
+let speedIndex = 0;
 
-// ---------- Tablero ----------
+const scene = new Scene($<HTMLCanvasElement>('board'));
+const statusEl = $('status');
+const opponentSelect = $<HTMLSelectElement>('opponent');
 
-function setupCanvas(): void {
-  const dpr = window.devicePixelRatio || 1;
-  canvas.width = BOARD_WIDTH * CELL * dpr;
-  canvas.height = BOARD_HEIGHT * CELL * dpr;
-  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-}
-
-function draw(): void {
-  ctx.clearRect(0, 0, BOARD_WIDTH * CELL, BOARD_HEIGHT * CELL);
-  if (!replay) {
-    ctx.fillStyle = COLORS.zone;
-    ctx.fillRect(0, 0, DEPLOY_COLUMNS * CELL, BOARD_HEIGHT * CELL);
-  }
-  ctx.strokeStyle = COLORS.line;
-  for (let x = 0; x <= BOARD_WIDTH; x++) line(x * CELL, 0, x * CELL, BOARD_HEIGHT * CELL);
-  for (let y = 0; y <= BOARD_HEIGHT; y++) line(0, y * CELL, BOARD_WIDTH * CELL, y * CELL);
-
-  if (!replay) {
-    for (const p of placements) drawUnit(p.type, p.x, p.y, COLORS.blue, 1);
-    return;
-  }
-  const { result, frame, mySide } = replay;
-  const units = frame < 0 ? result.initial : result.frames[frame].units;
-  const previous = frame <= 0 ? result.initial : result.frames[frame - 1].units;
-  const colorOf = (u: UnitState) => (u.side === mySide ? COLORS.blue : COLORS.red);
-  for (const u of units) drawUnit(u.type, u.x, u.y, colorOf(u), u.hp / UNITS[u.type].hp);
-
-  if (frame < 0) return;
-  const where = (id: number) => units.find((u) => u.id === id) ?? previous.find((u) => u.id === id);
-  // Vida neta cambiada por objetivo en este turno (varios golpes se suman en un solo número).
-  const delta = new Map<number, number>();
-  for (const e of result.frames[frame].events) {
-    if (e.kind === 'move' || e.kind === 'death') continue;
-    const from = where(e.id);
-    const to = where(e.target);
-    if (!from || !to) continue;
-    const heal = e.kind === 'heal';
-    ctx.strokeStyle = heal ? '#5ee39a' : e.kind === 'splash' ? '#c792ea' : COLORS.gold;
-    ctx.lineWidth = e.kind === 'attack' && e.charge ? 4 : 2;
-    line(center(from.x), center(from.y), center(to.x), center(to.y));
-    ctx.lineWidth = 1;
-    delta.set(e.target, (delta.get(e.target) ?? 0) + (heal ? e.amount : -e.damage));
-  }
-  ctx.font = 'bold 15px system-ui';
-  ctx.textAlign = 'center';
-  for (const [id, change] of delta) {
-    const to = where(id)!;
-    ctx.fillStyle = change >= 0 ? '#5ee39a' : '#ffffff';
-    ctx.fillText(change >= 0 ? `+${change}` : `${change}`, center(to.x) + 20, center(to.y) - 24);
-  }
-}
-
-function drawUnit(type: UnitType, x: number, y: number, color: string, hpRatio: number): void {
-  const cx = center(x);
-  const cy = center(y);
-  ctx.fillStyle = color;
-  ctx.beginPath();
-  ctx.arc(cx, cy, CELL * 0.32, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.fillStyle = COLORS.text;
-  ctx.font = 'bold 22px system-ui';
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.fillText(UNITS[type].letter, cx, cy + 1);
-  const w = CELL * 0.64;
-  ctx.fillStyle = '#00000088';
-  ctx.fillRect(cx - w / 2, cy + CELL * 0.36, w, 5);
-  ctx.fillStyle = hpRatio > 0.5 ? '#5ee39a' : hpRatio > 0.25 ? COLORS.gold : COLORS.red;
-  ctx.fillRect(cx - w / 2, cy + CELL * 0.36, w * Math.max(0, hpRatio), 5);
-}
-
-const center = (c: number) => c * CELL + CELL / 2;
-function line(x1: number, y1: number, x2: number, y2: number): void {
-  ctx.beginPath();
-  ctx.moveTo(x1, y1);
-  ctx.lineTo(x2, y2);
-  ctx.stroke();
-}
-
-canvas.addEventListener('click', (ev) => {
-  if (replay) return;
-  const rect = canvas.getBoundingClientRect();
-  const x = Math.floor(((ev.clientX - rect.left) / rect.width) * BOARD_WIDTH);
-  const y = Math.floor(((ev.clientY - rect.top) / rect.height) * BOARD_HEIGHT);
-  if (x >= DEPLOY_COLUMNS) return setStatus('Solo puedes desplegar en tu zona (columnas azules).');
-  const existing = placements.findIndex((p) => p.x === x && p.y === y);
-  if (existing >= 0) placements.splice(existing, 1);
-  else if (placements.length >= MAX_UNITS) return setStatus(`Máximo ${MAX_UNITS} unidades.`);
-  else if (armyCost(currentArmy()) + UNITS[selected].cost > BUDGET) return setStatus('No te alcanza el presupuesto.');
-  else placements.push({ type: selected, x, y });
-  setStatus('Clic sobre una unidad para quitarla.');
-  refresh();
-});
-
-// ---------- Panel de unidades ----------
-
-function renderPalette(): void {
-  const palette = $('palette');
-  palette.replaceChildren(...UNIT_TYPES.map((type) => {
-    const s = UNITS[type];
-    const b = document.createElement('button');
-    b.className = `unit${type === selected ? ' selected' : ''}`;
-    b.title = s.description;
-    b.innerHTML = `<span class="badge">${s.letter}</span>
-      <span><span class="name">${s.name}</span><br><span class="stats">❤${s.hp} ⚔${s.attack} 🎯${s.range} 👟${s.speed}${s.armor ? ` 🛡${s.armor}` : ''}${s.heal ? ` ✚${s.heal}` : ''}</span></span>
-      <span class="cost">${s.cost}</span>`;
-    b.onclick = () => { selected = type; renderPalette(); setStatus(s.description); };
-    return b;
-  }));
-}
-
-function refresh(): void {
-  const cost = armyCost(currentArmy());
-  $('budget').textContent = `${BUDGET - cost} de ${BUDGET} libres · ${placements.length}/${MAX_UNITS} unidades`;
-  $<HTMLButtonElement>('simulate').disabled = placements.length === 0 || replay !== null;
-  $<HTMLButtonElement>('submit').disabled = placements.length === 0;
-  $('edit').hidden = replay === null;
-  draw();
-}
-
-const currentArmy = (): Army => ({ units: placements });
+const currentArmy = (): Army => ({ race, armor, units: placements, cards: deck });
+const look = (): Look => ({ race, armor });
 
 function setStatus(text: string, tone: '' | 'win' | 'loss' = ''): void {
   statusEl.textContent = text;
   statusEl.className = `status ${tone}`;
 }
 
+// ---------- Tablero ----------
+
+const canvas = scene.canvas;
+canvas.addEventListener('mousemove', (ev) => {
+  scene.hover = battling ? null : scene.cellAt(ev.clientX, ev.clientY);
+  canvas.style.cursor = scene.hover && scene.hover.x < DEPLOY_COLUMNS ? 'pointer' : 'default';
+});
+canvas.addEventListener('mouseleave', () => { scene.hover = null; });
+canvas.addEventListener('click', (ev) => {
+  if (battling) return;
+  const cell = scene.cellAt(ev.clientX, ev.clientY);
+  if (!cell) return;
+  if (cell.x >= DEPLOY_COLUMNS) return setStatus('Solo puedes desplegar en tu zona (columnas iluminadas).');
+  const existing = placements.findIndex((p) => p.x === cell.x && p.y === cell.y);
+  if (existing >= 0) placements.splice(existing, 1);
+  else if (placements.length >= MAX_UNITS) return setStatus(`Máximo ${MAX_UNITS} unidades.`);
+  else if (armyCost({ units: placements }) + UNITS[selected].cost > BUDGET) return setStatus('No te alcanza el oro.');
+  else placements.push({ type: selected, x: cell.x, y: cell.y });
+  setStatus('Clic sobre una unidad para retirarla.');
+  refresh();
+});
+
+function refreshScene(): void {
+  if (battling) return;
+  const preset = PRESET_ARMIES[opponentSelect.value];
+  scene.ghost = { type: selected, look: look() };
+  scene.setBuild(placements, look(), preset && {
+    units: preset.army.units, look: { race: preset.army.race, armor: preset.army.armor ?? 'iron' },
+  });
+}
+
+// ---------- Razas ----------
+
+function renderRaces(): void {
+  $('races').replaceChildren(...RACE_IDS.map((id) => {
+    const b = document.createElement('button');
+    b.className = `race race-${id}${id === race ? ' active' : ''}`;
+    b.innerHTML = `<span class="emblem">${RACE_EMBLEM[id]}</span><span><strong>${RACES[id].name}</strong><small>${RACES[id].realm}</small></span>`;
+    b.onclick = () => {
+      if (battling) return;
+      race = id;
+      deck = deck.filter((c) => CARDS[c.card].race === null || CARDS[c.card].race === race);
+      renderAll();
+    };
+    return b;
+  }));
+  const info = RACES[race];
+  $('race-trait').innerHTML = `<span class="emblem">${RACE_EMBLEM[race]}</span><div><strong>${info.realm}</strong> · <em>${info.trait}</em><br>${info.description}</div>`;
+}
+
+// ---------- Unidades ----------
+
+function spriteCanvas(type: UnitType, r: Race, a: ArmorId, size: number): HTMLCanvasElement {
+  const c = document.createElement('canvas');
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  c.width = c.height = size * dpr;
+  c.style.width = c.style.height = `${size}px`;
+  c.getContext('2d')!.drawImage(getSprite(type, r, a, 1), 0, 0, size * dpr, size * dpr);
+  return c;
+}
+
+function renderPalette(): void {
+  $('palette').replaceChildren(...UNIT_TYPES.map((type) => {
+    const base = UNITS[type];
+    const s = statsFor(type, race);
+    const stat = (icon: string, v: number, b: number) =>
+      `<span class="${v > b ? 'up' : v < b ? 'down' : ''}">${icon}${v}</span>`;
+    const b = document.createElement('button');
+    b.className = `unit${type === selected ? ' selected' : ''}`;
+    b.title = base.description;
+    b.append(spriteCanvas(type, race, armor, 58));
+    const info = document.createElement('span');
+    info.innerHTML = `<span class="name">${base.name}</span>
+      <span class="stats">${stat('❤', s.hp, base.hp)} ${stat('⚔', s.attack, base.attack)} ${stat('🎯', s.range, base.range)} ${stat('👟', s.speed, base.speed)}${s.armor ? ` ${stat('🛡', s.armor, base.armor)}` : ''}${s.heal ? ` ${stat('✚', s.heal, base.heal)}` : ''}</span>
+      <span class="desc">${base.description}</span>`;
+    const cost = document.createElement('span');
+    cost.className = 'cost';
+    cost.textContent = String(base.cost);
+    b.append(info, cost);
+    b.onclick = () => { selected = type; renderPalette(); refreshScene(); setStatus(base.description); };
+    return b;
+  }));
+}
+
+// ---------- Cartas ----------
+
+function cardBlocker(card: Card): string | null {
+  if (deck.some((c) => c.card === card.id)) return 'Ya está en tu mazo.';
+  if (deck.length >= MAX_CARDS) return `Máximo ${MAX_CARDS} cartas.`;
+  if (card.rarity === 'legendary' && deck.filter((c) => CARDS[c.card].rarity === 'legendary').length >= MAX_LEGENDARY_CARDS) {
+    return 'Solo una legendaria por ejército.';
+  }
+  if (cardEnergy({ cards: deck }) + card.cost > ENERGY) return 'No te alcanza la energía.';
+  return null;
+}
+
+function renderDeck(): void {
+  const slots: HTMLElement[] = [];
+  for (let i = 0; i < MAX_CARDS; i++) {
+    const play = deck[i];
+    const slot = document.createElement('div');
+    slot.className = 'slot';
+    if (!play) {
+      slot.classList.add('empty');
+      slot.textContent = 'Espacio libre';
+    } else {
+      slot.append(cardElement(CARDS[play.card], 'mini'));
+      const controls = document.createElement('div');
+      controls.className = 'slot-controls';
+      const select = document.createElement('select');
+      for (let t = 1; t <= CARD_TURN_MAX; t++) select.append(new Option(`Turno ${t}`, String(t), false, t === play.turn));
+      select.onchange = () => { play.turn = Number(select.value); };
+      const remove = document.createElement('button');
+      remove.className = 'btn ghost small';
+      remove.textContent = 'Quitar';
+      remove.onclick = () => { deck.splice(i, 1); renderAll(); };
+      controls.append(select, remove);
+      slot.append(controls);
+    }
+    slots.push(slot);
+  }
+  $('deck').replaceChildren(...slots);
+  $('collection').replaceChildren(...cardsForRace(race).map((card) => {
+    const el = cardElement(card, 'mini');
+    const blocker = cardBlocker(card);
+    if (blocker) {
+      el.classList.add('disabled');
+      el.title = blocker;
+    }
+    el.onclick = () => {
+      if (battling) return;
+      const why = cardBlocker(card);
+      if (why) return setStatus(why);
+      deck.push({ card: card.id, turn: Math.min(CARD_TURN_MAX, deck.length + 1) });
+      setStatus(`${card.name} añadida. Elige en qué turno se lanza.`);
+      renderAll();
+    };
+    return el;
+  }));
+}
+
+// ---------- Armería ----------
+
+function renderArmors(): void {
+  $('armors').replaceChildren(...ARMOR_IDS.map((id) => {
+    const set = ARMORS[id];
+    const b = document.createElement('button');
+    b.className = `armor r-${set.rarity}${id === armor ? ' selected' : ''}`;
+    const preview = document.createElement('div');
+    preview.className = 'armor-preview';
+    preview.append(spriteCanvas('guardian', race, id, 72), spriteCanvas('knight', race, id, 72), spriteCanvas('mage', race, id, 72));
+    const text = document.createElement('div');
+    text.innerHTML = `<strong style="color:${RARITY_COLORS[set.rarity].light}">${set.name}</strong>
+      <span class="rarity" style="color:${RARITY_COLORS[set.rarity].main}">${RARITIES[set.rarity].name}</span>
+      <span class="desc">${set.description}</span>`;
+    b.append(preview, text);
+    b.onclick = () => { armor = id; renderAll(); };
+    return b;
+  }));
+}
+
+// ---------- Contadores ----------
+
+function refresh(): void {
+  const gold = armyCost({ units: placements });
+  const energy = cardEnergy({ cards: deck });
+  $('gold').textContent = `${BUDGET - gold} / ${BUDGET}`;
+  $('gold-bar').style.width = `${(100 * (BUDGET - gold)) / BUDGET}%`;
+  $('energy').textContent = `${ENERGY - energy} / ${ENERGY}`;
+  $('energy-bar').style.width = `${(100 * (ENERGY - energy)) / ENERGY}%`;
+  $<HTMLButtonElement>('simulate').disabled = placements.length === 0 || battling;
+  $<HTMLButtonElement>('submit').disabled = placements.length === 0;
+  $('edit').hidden = !battling;
+  $('speed').hidden = !battling;
+  $('skip').hidden = !battling;
+  refreshScene();
+}
+
+function renderAll(): void {
+  renderRaces();
+  renderPalette();
+  renderDeck();
+  renderArmors();
+  refresh();
+}
+
 // ---------- Batalla ----------
 
-function playBattle(result: BattleResult, mySide: 0 | 1, labels: [string, string]): void {
-  stopReplay();
-  replay = { result, frame: -1, timer: 0, mySide };
-  refresh();
-  setStatus(`${labels[mySide]} (azul) contra ${labels[1 - mySide]} (rojo)…`);
-  replay.timer = window.setInterval(() => {
-    if (!replay) return;
-    if (replay.frame >= result.frames.length - 1) {
-      window.clearInterval(replay.timer);
-      const why = result.reason === 'timeout' ? ' (por puntos al agotar los turnos)' : '';
-      if (result.winner === null) setStatus(`Empate${why}.`);
-      else if (result.winner === mySide) setStatus(`¡Victoria de ${labels[mySide]} en ${result.turns} turnos${why}!`, 'win');
-      else setStatus(`Gana ${labels[1 - mySide]} en ${result.turns} turnos${why}.`, 'loss');
-      return;
-    }
-    replay.frame++;
-    draw();
-  }, FRAME_MS);
-}
+const castBox = $('card-cast');
+const turnBox = $('turn');
+const resultBox = $('result');
+let replayLabels: [string, string] = ['Tú', 'Rival'];
+let replaySide: Side = 0;
 
-function stopReplay(): void {
-  if (replay) window.clearInterval(replay.timer);
-  replay = null;
-}
-
-const opponentSelect = $<HTMLSelectElement>('opponent');
-opponentSelect.replaceChildren(...Object.entries(PRESET_ARMIES).map(([id, p]) => new Option(p.name, id)));
-
-// La práctica se simula en el navegador con el mismo motor que usa el servidor.
-$('simulate').onclick = () => {
-  const preset = PRESET_ARMIES[opponentSelect.value];
-  playBattle(simulate(currentArmy(), preset.army), 0, ['Tu ejército', preset.name]);
+scene.hooks = {
+  onTurn: (turn) => {
+    turnBox.hidden = false;
+    turnBox.textContent = `Turno ${turn}`;
+    turnBox.classList.remove('pop');
+    void turnBox.offsetWidth;
+    turnBox.classList.add('pop');
+  },
+  onCard: (side, id, fizzled) => {
+    const el = cardElement(CARDS[id], 'hero');
+    const wrap = document.createElement('div');
+    wrap.className = `cast ${side === replaySide ? 'mine' : 'theirs'}${fizzled ? ' fizzled' : ''}`;
+    const who = document.createElement('div');
+    who.className = 'cast-who';
+    who.textContent = `${replayLabels[side]} lanza`;
+    wrap.append(who, el);
+    castBox.replaceChildren(wrap);
+  },
+  onCardEnd: () => {
+    const wrap = castBox.firstElementChild;
+    if (wrap) wrap.classList.add('out');
+  },
+  onFinish: () => finishBattle(),
 };
-$('edit').onclick = () => { stopReplay(); setStatus('Ajusta tu ejército y vuelve a probar.'); refresh(); };
-$('clear').onclick = () => { stopReplay(); placements = []; refresh(); };
+
+let lastResult: BattleResult | null = null;
+
+function playBattle(result: BattleResult, looks: [Look, Look], mySide: Side, labels: [string, string]): void {
+  battling = true;
+  lastResult = result;
+  replayLabels = labels;
+  replaySide = mySide;
+  resultBox.hidden = true;
+  castBox.replaceChildren();
+  scene.hover = null;
+  scene.ghost = null;
+  scene.speed = SPEEDS[speedIndex];
+  scene.play(result, looks, mySide);
+  setStatus(`${labels[mySide]} (azul) contra ${labels[mySide === 0 ? 1 : 0]} (rojo)`);
+  refresh();
+}
+
+function finishBattle(): void {
+  const r = lastResult;
+  if (!r) return;
+  castBox.replaceChildren();
+  turnBox.hidden = true;
+  const why = r.reason === 'timeout' ? 'por puntos al agotar los turnos' : `en ${r.turns} turnos`;
+  const [title, tone] = r.winner === null ? ['Empate', ''] : r.winner === replaySide ? ['¡Victoria!', 'win'] : ['Derrota', 'loss'];
+  resultBox.className = `result ${tone}`;
+  resultBox.innerHTML = `<div class="result-title">${title}</div><div class="result-sub">${r.winner === null ? 'Nadie cede terreno' : `${replayLabels[r.winner]} gana ${why}`}</div>`;
+  resultBox.hidden = false;
+  setStatus(r.winner === null ? 'Empate.' : `${replayLabels[r.winner]} gana ${why}.`, (tone || '') as '' | 'win' | 'loss');
+}
+
+function stopBattle(): void {
+  battling = false;
+  resultBox.hidden = true;
+  turnBox.hidden = true;
+  castBox.replaceChildren();
+  refresh();
+}
+
+opponentSelect.replaceChildren(...Object.entries(PRESET_ARMIES).map(([id, p]) => new Option(`${p.name} (${RACES[p.army.race].name})`, id)));
+opponentSelect.onchange = () => refreshScene();
+
+$('simulate').onclick = () => {
+  const check = validateArmy(currentArmy());
+  if (!check.ok) return setStatus(check.error);
+  const preset = PRESET_ARMIES[opponentSelect.value];
+  // La práctica se simula en el navegador con el mismo motor que usa el servidor.
+  playBattle(simulate(check.army, preset.army), [look(), { race: preset.army.race, armor: preset.army.armor ?? 'iron' }], 0, ['Tu ejército', preset.name]);
+};
+$('edit').onclick = () => { stopBattle(); setStatus('Ajusta tu ejército y vuelve a la batalla.'); };
+$('clear').onclick = () => { stopBattle(); placements = []; deck = []; renderAll(); };
+$('skip').onclick = () => scene.skip();
+$('speed').onclick = () => {
+  speedIndex = (speedIndex + 1) % SPEEDS.length;
+  scene.speed = SPEEDS[speedIndex];
+  $('speed').textContent = `Velocidad ×${SPEEDS[speedIndex]}`;
+};
+resultBox.onclick = () => { resultBox.hidden = true; };
+
+// ---------- Pestañas ----------
+
+for (const tab of $('tabs').querySelectorAll<HTMLButtonElement>('button')) {
+  tab.onclick = () => {
+    for (const t of $('tabs').querySelectorAll('button')) t.classList.toggle('active', t === tab);
+    for (const panel of document.querySelectorAll<HTMLElement>('[data-panel]')) panel.hidden = panel.dataset.panel !== tab.dataset.tab;
+    if (tab.dataset.tab === 'tournaments') loadTournaments();
+  };
+}
 
 // ---------- Torneos ----------
 
@@ -197,10 +336,12 @@ async function api<T>(path: string, init?: RequestInit): Promise<T> {
 
 interface TournamentView {
   id: string; name: string; status: string; closesAt: string; entryFee: number; pool: number; entryCount: number;
-  result?: { standings: Array<{ id: string; rank: number; points: number; wins: number; draws: number; losses: number }>; plan: { payouts: Array<{ id: string; amount: number }> } };
+  entries?: Array<{ playerId: string; army: Army }>;
+  result?: { standings: Array<{ id: string; rank: number; points: number }>; plan: { payouts: Array<{ id: string; amount: number }> } };
 }
 
 const usdc = (units: number) => `${(units / 1_000_000).toLocaleString('es', { maximumFractionDigits: 2 })} USDC`;
+const escapeHtml = (s: string) => s.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
 
 $('submit').onclick = async () => {
   const out = $('submit-status');
@@ -227,17 +368,18 @@ async function loadTournaments(): Promise<void> {
     if (list.length === 0) { box.textContent = 'No hay torneos todavía.'; return; }
     box.replaceChildren(...list.slice(-5).reverse().map((t) => {
       const div = document.createElement('div');
+      div.className = 'tournament';
       const when = new Date(t.closesAt).toLocaleString('es');
       div.innerHTML = `<strong>${escapeHtml(t.name)}</strong><br>
         ${t.status === 'closed' ? 'Cerrado' : `Cierra ${when}`} · ${t.entryCount} inscritos · Pozo ${usdc(t.pool)}
         ${t.entryFee ? ` · Entrada ${usdc(t.entryFee)}` : ' · Gratis'}`;
       if (t.status === 'closed') {
         const b = document.createElement('button');
+        b.className = 'btn small';
         b.textContent = 'Ver clasificación';
         b.onclick = () => showStandings(t.id, div);
         div.append(document.createElement('br'), b);
       }
-      div.style.marginBottom = '10px';
       return div;
     }));
   } catch {
@@ -248,30 +390,25 @@ async function loadTournaments(): Promise<void> {
 async function showStandings(id: string, container: HTMLElement): Promise<void> {
   const t = await api<TournamentView>(`/api/tournaments/${id}`);
   if (!t.result) return;
+  const armies = new Map((t.entries ?? []).map((e) => [e.playerId, e.army]));
+  const lookOf = (player: string): Look => ({ race: armies.get(player)?.race ?? 'human', armor: armies.get(player)?.armor ?? 'iron' });
   const prize = new Map(t.result.plan.payouts.map((p) => [p.id, p.amount]));
   const table = document.createElement('table');
-  table.innerHTML = '<tr><th>#</th><th>Jugador</th><th class="num">Pts</th><th class="num">Premio</th></tr>';
+  table.innerHTML = '<tr><th>#</th><th>Jugador</th><th>Raza</th><th class="num">Pts</th><th class="num">Premio</th></tr>';
   for (const s of t.result.standings.slice(0, 10)) {
     const tr = table.insertRow();
-    tr.innerHTML = `<td>${s.rank}</td><td>${escapeHtml(s.id)}</td><td class="num">${s.points}</td><td class="num">${prize.has(s.id) ? usdc(prize.get(s.id)!) : ''}</td>`;
-    tr.style.cursor = 'pointer';
-    tr.title = 'Ver repetición contra el primer clasificado';
+    const r = armies.get(s.id)?.race;
+    tr.innerHTML = `<td>${s.rank}</td><td>${escapeHtml(s.id)}</td><td>${r ? RACES[r].name : ''}</td><td class="num">${s.points}</td><td class="num">${prize.has(s.id) ? usdc(prize.get(s.id)!) : ''}</td>`;
+    tr.title = 'Ver la batalla contra el primer clasificado';
     tr.onclick = async () => {
       const leader = t.result!.standings[0].id;
       const rival = s.id === leader ? t.result!.standings[1]?.id : leader;
       if (!rival) return;
       const result = await api<BattleResult>(`/api/tournaments/${id}/replay?left=${encodeURIComponent(s.id)}&right=${encodeURIComponent(rival)}`);
-      playBattle(result, 0, [s.id, rival]);
+      playBattle(result, [lookOf(s.id), lookOf(rival)], 0, [s.id, rival]);
     };
   }
   container.append(table);
 }
 
-function escapeHtml(s: string): string {
-  return s.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
-}
-
-setupCanvas();
-renderPalette();
-refresh();
-loadTournaments();
+renderAll();

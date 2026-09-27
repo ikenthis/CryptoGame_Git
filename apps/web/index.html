@@ -5,42 +5,78 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Bastión</title>
     <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>⚔</text></svg>" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;800;900&family=Cinzel+Decorative:wght@900&display=swap" rel="stylesheet" />
     <link rel="stylesheet" href="/src/style.css" />
   </head>
   <body>
     <header>
       <h1>Bastión</h1>
-      <p>Arma tu ejército, colócalo y compite en torneos de estrategia.</p>
+      <p>Elige tu raza, forja tu ejército, prepara tus cartas y conquista torneos.</p>
     </header>
     <main>
-      <section class="board-panel">
-        <canvas id="board"></canvas>
-        <div class="status" id="status">Elige una unidad y haz clic en tu zona (columnas azules).</div>
-        <div class="row">
-          <label>Rival
-            <select id="opponent"></select>
-          </label>
-          <button id="simulate" class="primary">⚔ Simular</button>
-          <button id="edit" hidden>Volver a editar</button>
-          <button id="clear">Vaciar</button>
+      <section class="stage">
+        <div id="races" class="races"></div>
+        <div class="board-wrap">
+          <canvas id="board"></canvas>
+          <div id="turn" class="turn" hidden></div>
+          <div id="card-cast" class="card-cast"></div>
+          <div id="result" class="result" hidden></div>
+        </div>
+        <div class="status" id="status">Elige una unidad y colócala en tu zona (columnas iluminadas).</div>
+        <div class="controls">
+          <label>Rival <select id="opponent"></select></label>
+          <button id="simulate" class="btn primary">⚔ ¡A la batalla!</button>
+          <button id="speed" class="btn" hidden>Velocidad ×1</button>
+          <button id="skip" class="btn" hidden>Saltar ⏭</button>
+          <button id="edit" class="btn" hidden>Volver a editar</button>
+          <button id="clear" class="btn ghost">Vaciar</button>
         </div>
       </section>
       <aside>
-        <div class="budget"><span>Oro</span><strong id="budget"></strong></div>
-        <div id="palette" class="palette"></div>
-        <div class="card">
-          <h2>Arena diaria</h2>
-          <p class="muted">Entrada gratis. Tu ejército queda oculto hasta el cierre y juega contra todos los demás.</p>
-          <div class="row">
-            <input id="player" placeholder="Tu nombre de jugador" maxlength="42" />
-            <button id="submit" class="primary">Inscribirme</button>
+        <nav class="tabs" id="tabs">
+          <button data-tab="army" class="active">Ejército</button>
+          <button data-tab="cards">Cartas</button>
+          <button data-tab="armory">Armería</button>
+          <button data-tab="tournaments">Torneos</button>
+        </nav>
+
+        <section data-panel="army" class="panel">
+          <div class="meter"><span>Oro</span><div class="bar"><i id="gold-bar"></i></div><strong id="gold"></strong></div>
+          <div id="race-trait" class="trait"></div>
+          <div id="palette" class="palette"></div>
+        </section>
+
+        <section data-panel="cards" class="panel" hidden>
+          <div class="meter"><span>Energía</span><div class="bar energy"><i id="energy-bar"></i></div><strong id="energy"></strong></div>
+          <p class="muted">Hasta 3 cartas y 1 legendaria. Cada una se lanza sola al empezar el turno que elijas: el momento es tu estrategia.</p>
+          <div id="deck" class="deck"></div>
+          <h3>Colección</h3>
+          <div id="collection" class="collection"></div>
+          <p class="muted small">Las cartas se ganan jugando y son tuyas: se pueden vender o regalar como objetos del juego en la blockchain. En los torneos con premio en dinero todos usan el arsenal completo, para que el premio no se pueda comprar.</p>
+        </section>
+
+        <section data-panel="armory" class="panel" hidden>
+          <p class="muted">Las armaduras son cosméticas: cambian cómo luce tu ejército, nunca sus estadísticas. Se ganan jugando y se pueden vender.</p>
+          <div id="armors" class="armors"></div>
+        </section>
+
+        <section data-panel="tournaments" class="panel" hidden>
+          <div class="box">
+            <h2>Arena diaria</h2>
+            <p class="muted">Entrada gratis. Tu ejército queda oculto hasta el cierre y se enfrenta a todos los demás.</p>
+            <div class="row">
+              <input id="player" placeholder="Tu nombre de jugador" maxlength="42" />
+              <button id="submit" class="btn primary">Inscribirme</button>
+            </div>
+            <div id="submit-status" class="muted"></div>
           </div>
-          <div id="submit-status" class="muted"></div>
-        </div>
-        <div class="card">
-          <h2>Torneos</h2>
-          <div id="tournaments" class="muted">Cargando…</div>
-        </div>
+          <div class="box">
+            <h2>Torneos</h2>
+            <div id="tournaments" class="muted">Cargando…</div>
+          </div>
+        </section>
       </aside>
     </main>
     <script type="module" src="/src/main.ts"></script>

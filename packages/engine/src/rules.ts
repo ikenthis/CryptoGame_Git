@@ -9,8 +9,14 @@ export const DEPLOY_COLUMNS = 3;
 export const BUDGET = 12;
 export const MAX_UNITS = 6;
 export const MAX_TURNS = 40;
+/** Energía para cartas (independiente del oro de las unidades). */
+export const ENERGY = 6;
+export const MAX_CARDS = 3;
+export const MAX_LEGENDARY_CARDS = 1;
+/** Último turno en el que se puede programar una carta. */
+export const CARD_TURN_MAX = 10;
 
-export type UnitType = 'warrior' | 'archer' | 'knight' | 'guardian' | 'mage' | 'healer';
+export type UnitType = 'warrior' | 'archer' | 'knight' | 'guardian' | 'mage' | 'healer' | 'golem';
 
 export interface UnitStats {
   name: string;
@@ -29,6 +35,8 @@ export interface UnitStats {
   /** Vida que restaura a un aliado por turno (si > 0, la unidad no ataca). */
   heal: number;
   description: string;
+  /** Solo aparece invocada por cartas; no se puede comprar con oro. */
+  summonOnly?: boolean;
 }
 
 export const UNITS: Record<UnitType, UnitStats> = {
@@ -62,10 +70,20 @@ export const UNITS: Record<UnitType, UnitStats> = {
     chargeBonus: 0, splash: 0, ignoresArmor: false, heal: 3,
     description: 'Cura 3 al aliado más herido a su alcance. No ataca.',
   },
+  golem: {
+    name: 'Gólem Ancestral', letter: 'Ω', cost: 5, hp: 24, attack: 4, range: 1, speed: 1, armor: 3,
+    chargeBonus: 0, splash: 0, ignoresArmor: false, heal: 0, summonOnly: true,
+    description: 'Coloso de piedra rúnica. Solo aparece con la carta legendaria enana.',
+  },
 };
 
-export const UNIT_TYPES = Object.keys(UNITS) as UnitType[];
+/** Unidades que se pueden desplegar con oro. */
+export const UNIT_TYPES = (Object.keys(UNITS) as UnitType[]).filter((t) => !UNITS[t].summonOnly);
 
 export function isUnitType(value: unknown): value is UnitType {
   return typeof value === 'string' && Object.hasOwn(UNITS, value);
+}
+
+export function isDraftable(value: unknown): value is UnitType {
+  return isUnitType(value) && !UNITS[value].summonOnly;
 }

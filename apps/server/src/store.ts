@@ -28,6 +28,11 @@ export interface Tournament {
   entryFee: number;
   sponsorPool: number;
   feeBps: number;
+  /**
+   * 'open': todas las cartas disponibles para todos (por defecto; el premio no se
+   * puede comprar). 'owned': solo cartas que el jugador posee (requiere verificar inventario).
+   */
+  cardPool: 'open' | 'owned';
   entries: Entry[];
   result: TournamentResult | null;
 }

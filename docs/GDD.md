@@ -27,12 +27,14 @@ elegir y *dónde* colocarlas.
 | Asíncrono | No hace falta coincidir en horario: ideal para móvil y Telegram. |
 | Compartible | Cada partida es una repetición reproducible: «mira cómo gané». |
 
-## 2. Reglas (v0.1)
+## 2. Reglas (v0.2)
 
 - Tablero de 8×6. Cada jugador despliega en sus 3 columnas propias.
-- Presupuesto: **12 de oro**, máximo **6 unidades**.
-- Hasta 40 turnos. En cada turno las unidades de ambos bandos actúan
-  intercaladas y el bando que empieza alterna de un turno a otro.
+- Cada ejército tiene **una raza**, **12 de oro** para unidades (máximo 6) y
+  **6 de energía** para cartas (máximo 3, y solo 1 legendaria).
+- Hasta 40 turnos. Cada turno empieza con la **fase de cartas** (las cartas
+  programadas para ese turno) y sigue con la **fase de unidades**, que actúan
+  intercaladas. El bando que empieza alterna de un turno a otro.
 - Cada unidad ataca al enemigo más cercano (desempata la menor vida). Si no lo
   alcanza, avanza por el camino libre más corto.
 - **Victoria:** eliminar al rival. Si se agotan los turnos, gana quien conserve
@@ -46,13 +48,65 @@ elegir y *dónde* colocarlas.
 | Guardián (E) | 3 | 14 | 2 | 1 | 1 | Armadura 2 |
 | Mago (M) | 4 | 6 | 3 | 2 | 1 | Ignora armadura. Salpica 2 a los enemigos pegados al objetivo |
 | Sanador (S) | 3 | 7 | 0 | 2 | 1 | Cura 3 al aliado más herido |
+| Gólem Ancestral | — | 24 | 4 | 1 | 1 | Armadura 3. Solo aparece con la legendaria enana |
 
 La armadura resta daño, con un mínimo de 1 por golpe.
 
+### Razas
+
+Cada raza modifica las unidades base con ventajas **y desventajas**, y tiene su
+propia carta legendaria. Ninguna tiene unidades exclusivas más fuertes: la
+identidad sale del estilo de juego.
+
+| Raza | Reino | Rasgo | Efecto | Legendaria |
+|---|---|---|---|---|
+| Humanos | Reino de Aurelia | Disciplina | Guerreros armadura +1, Caballeros vida +2 | Intervención de Aurelia |
+| Elfos | Bosque de Sylvaran | Ojo de halcón | Arqueros alcance +1, Sanadores curan +1; Guardianes vida −2 | Tormenta de Sylvaran |
+| Orcos | Clanes de Ceniza | Sed de sangre | Guerreros vida +3, Caballeros ataque +1; Arqueros alcance −1 | Furia de Ceniza |
+| No-muertos | Legión Sombría | Inmortales | La primera unidad que cae se levanta con la mitad de vida; Sanadores curan −1 | Legión de los Caídos |
+| Enanos | Forja de Durnhal | Hierro ancestral | Guardianes y Guerreros armadura +1; Caballeros velocidad −1 | Gólem Ancestral |
+
+Con el mismo ejército y sin cartas, las cinco razas empatan a puntos en el
+informe de balance: ninguna es mejor por sí sola.
+
+### Cartas de acción
+
+Cada carta se **programa para un turno** (del 1 al 10) y se lanza sola al
+empezar ese turno. Elegir el momento es parte de la estrategia: una
+Resurrección en el turno 1 no hace nada, y en el turno 5 puede decidir la
+partida. Si no hay objetivo válido, la carta **falla** («Sin efecto»).
+
+| Carta | Rareza | Energía | Efecto |
+|---|---|---|---|
+| Flecha Ígnea | Común | 1 | 3 de daño al enemigo con menos vida |
+| Poción Menor | Común | 1 | Cura 4 al aliado más herido |
+| Grito de Guerra | Común | 2 | Aliados +1 ataque durante 2 turnos |
+| Piel de Piedra | Poco común | 2 | Aliados +1 armadura durante 3 turnos |
+| Viento Veloz | Poco común | 2 | Aliados +1 velocidad durante 2 turnos |
+| Cadenas de Escarcha | Poco común | 2 | Congela al enemigo con más vida durante 2 turnos |
+| Meteoro | Rara | 3 | 5 de daño al centro del grupo y 2 a los adyacentes, ignora armadura |
+| Refuerzos | Rara | 3 | Invoca un Guerrero en la retaguardia |
+| Luz Sanadora | Rara | 3 | Cura 3 a todos los aliados |
+| Cadena de Rayos | Épica | 4 | 4 / 3 / 2 de daño encadenado |
+| Resurrección | Épica | 4 | Revive a la unidad caída más valiosa con la mitad de vida |
+| 5 legendarias | Legendaria | 5 | Una por raza (ver tabla de razas) |
+
+**La rareza no es poder.** Lo que equilibra una carta es su coste de energía;
+la rareza indica lo espectacular o específica que es y cuántas copias
+existen. Una legendaria cuesta 5 de los 6 puntos de energía: casi todo el
+presupuesto de cartas.
+
+### Armaduras (cosméticas)
+
+Hierro de Campaña (común), Acero Templado (poco común), Plata Rúnica (rara),
+Oro Real (épica) y Armadura del Eclipse (legendaria). Cambian el aspecto de
+todo el ejército (metal, capa, penacho, gemas, runas, aura y brasas) según la
+raza. **No cambian ninguna estadística**: el motor las ignora al simular.
+
 **Balance:** los números son un punto de partida. `node packages/engine/scripts/balance.ts`
-enfrenta los ejércitos de referencia entre sí. Antes de cada temporada hay que
-revisar que ninguna composición gane a todas. Con los números actuales, «Arcano»
-y «Muralla» dominan y «Andanada» va floja: es el primer ajuste pendiente.
+compara los ejércitos de referencia, las razas entre sí y el impacto de cada
+carta. Antes de cada temporada hay que revisar que ninguna composición gane a
+todas.
 
 ### Profundidad a largo plazo (post-MVP)
 
@@ -118,12 +172,36 @@ cosméticos, comisiones), **nunca** de los depósitos de otros jugadores.
 - Si 5.000 jugadores activos al mes generan 3 torneos de pago diarios de 200
   inscritos, la comisión da unos 1.800 USDC al mes, más cosméticos.
 
+### Objetos coleccionables: cartas y armaduras
+
+- **Se consiguen jugando:** recompensas de misiones, rachas, ligas y temporadas,
+  y también fragmentos para fabricar la carta que quieras.
+- **Son del jugador:** tokens ERC-1155 (`contracts/src/BastionItems.sol`) que se
+  pueden vender o regalar en cualquier mercado compatible (OpenSea, Magic
+  Eden…). Cada reventa paga una **regalía del 5%** al tesoro (tope del 10% en
+  el contrato): es un ingreso recurrente que no sale de los premios.
+- **Escasez honesta:** cada objeto tiene un suministro máximo que se fija al
+  crearlo y no se puede ampliar después. Las legendarias siempre tienen límite.
+  Sugerencia: 500 copias por legendaria, 2.000 épicas, 10.000 raras;
+  comunes y poco comunes sin límite.
+- **Venta directa (opcional):** armaduras a precio fijo en la tienda. Nunca
+  sobres con contenido aleatorio.
+- **Uso en torneos con premio:** por defecto **arsenal abierto** (`cardPool:
+  'open'`): todos pueden usar cualquier carta, así que el dinero no compra
+  ventaja en un torneo con premio. Las cartas propias cuentan en los modos
+  clasificatorios sin premio en dinero, en los torneos de coleccionista (con
+  premios en objetos, `cardPool: 'owned'`) y como estatus, porque las armaduras
+  se lucen en cada repetición.
+
 ### Lo que NO haremos
 
 - Token propio con preventa ni promesas de rentabilidad.
 - NFT obligatorio para jugar.
 - Referidos multinivel.
-- Cajas de botín pagadas o cualquier mecánica de azar con dinero.
+- **Sobres pagados con rareza aleatoria** (cajas de botín) ni cualquier mecánica
+  de azar con dinero: en varios países (Bélgica, Países Bajos…) se consideran
+  juego de apuestas.
+- Cartas que den ventaja en torneos con premio solo por haberlas comprado.
 
 ## 6. Integridad y anti-trampas
 
@@ -155,18 +233,23 @@ cosméticos, comisiones), **nunca** de los depósitos de otros jugadores.
   externo.
 - **Sin valores:** sin token de inversión ni promesas de rendimiento. USDC solo
   como medio de pago de premios.
+- **Objetos comerciables:** se venden como coleccionables, sin prometer que se
+  revaloricen. Sin sobres aleatorios de pago (normativa de cajas de botín).
 - Impuestos: certificados de premios para los ganadores cuando aplique.
 - Términos claros: reglas, reparto, comisión, plazos y reembolsos.
 
 ## 8. Arquitectura
 
 ```
-packages/engine   Motor determinista en TS (reglas, simulación, torneo, reparto).
-                  Lo usan el cliente (práctica) y el servidor (torneos).
+packages/engine   Motor determinista en TS (reglas, razas, cartas, simulación,
+                  torneo, reparto). Lo usan el cliente (práctica) y el servidor.
 apps/server       API HTTP: inscripción oculta, cierre, clasificación y repeticiones.
-apps/web          Cliente (Vite + canvas): editor de ejército y repeticiones.
+apps/web          Cliente (Vite + canvas): sprites procedurales por raza y
+                  armadura, efectos y partículas, cartas, armería y torneos.
 contracts         TournamentEscrow.sol: escrow USDC, tope de comisión,
                   compromisos, reembolsos.
+                  BastionItems.sol: cartas y armaduras ERC-1155 con suministro
+                  limitado y regalías ERC-2981.
 ```
 
 Flujo de un torneo de pago:
@@ -187,11 +270,12 @@ integración con wallets embebidas).
 
 | Fase | Contenido | Criterio para avanzar |
 |---|---|---|
-| 0. Prototipo (hecho) | Motor, API, cliente web, contrato con tests | — |
+| 0. Prototipo (hecho) | Motor con razas y cartas, API, cliente web con gráficos, contratos con tests | — |
+| 0.5 Arte final | Ilustradores para cartas y sprites animados por raza (la caja de 100×100 y `getSprite()` ya están preparadas para cambiarlos), música y sonido | Test con jugadores: «¿se ve épico?» |
 | 1. MVP gratuito (4–6 semanas) | Telegram Mini App, cuentas, arena diaria patrocinada, pagos manuales, desafío diario | Retención D1 > 35% y D7 > 12% **sin** premios |
 | 2. Confianza | Postgres, verificación de identidad, panel de pagos públicos, auditoría del contrato | Auditoría sin hallazgos críticos |
 | 3. Torneos de pago | Escrow en Base, geobloqueo, KYC para retiros | Aprobación legal por jurisdicción |
-| 4. Crecimiento | Cosméticos, pase de temporada, clanes, ligas, patrocinadores | Ingresos ≥ coste de premios gratuitos |
+| 4. Crecimiento | Recompensas en objetos on-chain, pase de temporada, clanes, ligas, patrocinadores, más razas | Ingresos ≥ coste de premios gratuitos |
 
 ## 10. Métricas clave
 

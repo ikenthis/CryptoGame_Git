@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Bastión · Galería de sprites</title>
+    <style>
+      body { margin: 0; padding: 16px; background: #10121a; color: #ece6d8; font: 14px system-ui, sans-serif; }
+      canvas { display: block; margin-top: 12px; }
+    </style>
+  </head>
+  <body>
+    <!-- Herramienta para arte: todas las unidades por raza (?armor=royal) o todas
+         las armaduras de una unidad (?mode=armors&type=knight). -->
+    <strong>Galería de sprites</strong> ·
+    <a style="color:#e8c164" href="?armor=royal">Razas</a> ·
+    <a style="color:#e8c164" href="?mode=armors&type=guardian">Armaduras</a>
+    <canvas id="c"></canvas>
+    <script type="module">
+      import { getSprite } from '/src/art/sprites.ts';
+      const races = ['human', 'elf', 'orc', 'undead', 'dwarf'];
+      const types = ['warrior', 'archer', 'knight', 'guardian', 'mage', 'healer', 'golem'];
+      const armors = ['iron', 'steel', 'runic', 'royal', 'eclipse'];
+      const params = new URLSearchParams(location.search);
+      const byArmor = params.get('mode') === 'armors';
+      const cols = byArmor ? armors : types;
+      const S = 130;
+      const c = document.getElementById('c');
+      c.width = cols.length * S;
+      c.height = races.length * S;
+      const x = c.getContext('2d');
+      races.forEach((race, j) => cols.forEach((col, i) => {
+        const sprite = byArmor
+          ? getSprite(params.get('type') || 'warrior', race, col, 1)
+          : getSprite(col, race, params.get('armor') || 'royal', 1);
+        x.drawImage(sprite, i * S, j * S, S, S);
+      }));
+    </script>
+  </body>
+</html>
