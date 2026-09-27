@@ -24,13 +24,14 @@ export const ART_STYLE = [
 ].join(' ');
 
 /**
- * Sprites del tablero, en el estilo de la ilustración de referencia
- * (docs/art-reference.webp): 2D pintado a mano, fantasía oscura, contornos marcados.
+ * Sprites del tablero: anime japonés de videojuego (JRPG/gacha) mezclado con
+ * fantasía clásica pintada, con la paleta de docs/art-reference.webp.
  */
 export const SPRITE_STYLE = [
-  '2D hand-painted dark-fantasy game character sprite, in the style of a premium mobile strategy game.',
-  'Full body, standing heroic pose, three-quarter view facing right, whole figure visible from head to feet, centered,',
-  'bold clean outlines, rich painterly shading, ornate detailed armor, strong rim light.',
+  'Anime JRPG character art fused with classic high-fantasy oil painting: the expressive faces, dynamic heroic pose and crisp cel-shaded lighting of a Japanese gacha game,',
+  'combined with the ornate armor, rich textures and dramatic painterly color of classic western fantasy illustration.',
+  'Full body chibi-free proportions, three-quarter view facing right, whole figure visible from head to feet, centered, confident battle stance,',
+  'bold clean lineart, vibrant saturated colors, glowing magical accents, strong rim light.',
   'Isolated on a plain flat pure white background, no ground, no shadow, no scenery, no other characters.',
   'Absolutely no text, letters, logos, watermarks or frames.',
 ].join(' ');
