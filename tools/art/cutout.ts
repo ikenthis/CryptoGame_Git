@@ -164,3 +164,44 @@ function boxBlur(rgba: Uint8Array, w: number, h: number, r: number): Float32Arra
   }
   return out;
 }
+
+/**
+ * Borra las islas opacas pequeñas separadas de la figura (restos de la marca de
+ * agua, motas del fondo). Conserva todo componente de al menos `minFraction`
+ * del mayor. Trabaja sobre RGBA y lo modifica en su sitio.
+ */
+export function removeIslands(img: RawImage, minFraction = 0.03): RawImage {
+  const { width: w, height: h, data } = img;
+  const label = new Int32Array(w * h).fill(-1);
+  const sizes: number[] = [];
+  const stack: number[] = [];
+  for (let start = 0; start < w * h; start++) {
+    if (label[start] !== -1 || data[start * 4 + 3] <= 40) continue;
+    const id = sizes.length;
+    let size = 0;
+    label[start] = id;
+    stack.push(start);
+    while (stack.length) {
+      const i = stack.pop()!;
+      size++;
+      const x = i % w, y = (i - x) / w;
+      for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+        const xx = x + dx, yy = y + dy;
+        if (xx < 0 || yy < 0 || xx >= w || yy >= h) continue;
+        const n = yy * w + xx;
+        if (label[n] === -1 && data[n * 4 + 3] > 40) {
+          label[n] = id;
+          stack.push(n);
+        }
+      }
+    }
+    sizes.push(size);
+  }
+  const biggest = Math.max(0, ...sizes);
+  for (let i = 0; i < w * h; i++) {
+    const id = label[i];
+    // También se limpian los píxeles casi transparentes (sin etiqueta) para no dejar halos sueltos.
+    if (id === -1 ? data[i * 4 + 3] > 0 : sizes[id] < biggest * minFraction) data[i * 4 + 3] = 0;
+  }
+  return img;
+}

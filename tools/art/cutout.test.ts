@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { cutoutBackground, transparentRatio } from './cutout.ts';
+import { cutoutBackground, removeIslands, transparentRatio } from './cutout.ts';
 
 // Imagen sintética: fondo gris con degradado vertical y una figura oscura en el centro.
 function sample(w = 80, h = 80) {
@@ -32,5 +32,16 @@ describe('cutoutBackground', () => {
     for (let y = 74; y < 78; y++) for (let x = 60; x < 76; x++) img.data.fill(0, (y * 80 + x) * 3, (y * 80 + x) * 3 + 3);
     const out = cutoutBackground(img, { clear: { x: 0.7, y: 0.9, w: 0.3, h: 0.1 } });
     assert.equal(out.width, 28);
+  });
+
+  it('borra islas pequeñas separadas de la figura', () => {
+    const w = 40, h = 40;
+    const data = new Uint8Array(w * h * 4);
+    const put = (x: number, y: number) => { data[(y * w + x) * 4 + 3] = 255; };
+    for (let y = 5; y < 30; y++) for (let x = 10; x < 25; x++) put(x, y); // figura
+    for (let x = 33; x < 36; x++) put(x, 37); // «marca»
+    removeIslands({ data, width: w, height: h, channels: 4 });
+    assert.equal(data[(37 * w + 34) * 4 + 3], 0);
+    assert.equal(data[(10 * w + 15) * 4 + 3], 255);
   });
 });

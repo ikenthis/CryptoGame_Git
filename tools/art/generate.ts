@@ -6,12 +6,12 @@
 //   node tools/art/generate.ts --provider pollinations   (gratis y sin clave; Flux vía Pollinations)
 //   OPENAI_API_KEY=...        node tools/art/generate.ts                  (gpt-image-1)
 //   REPLICATE_API_TOKEN=...   node tools/art/generate.ts --provider replicate   (Flux)
-// Opciones: --only units,cards/meteor   --force   --dry-run   --keep-size (no reducir)
+// Opciones: --only units,cards/meteor   --force   --dry-run   --keep-size (no reducir)   --variant N (otra semilla)
 import { existsSync } from 'node:fs';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { cutoutBackground } from './cutout.ts';
+import { cutoutBackground, removeIslands } from './cutout.ts';
 import { ART_JOBS, type ArtJob } from './prompts.ts';
 
 export interface Provider {
@@ -72,12 +72,12 @@ export function replicateProvider(apiToken: string, baseUrl = 'https://api.repli
  * piden sobre blanco y el juego recorta el fondo al cargarlos. El plan gratuito
  * añade una marca en la esquina inferior derecha, que aquí se elimina.
  */
-export function pollinationsProvider(baseUrl = 'https://image.pollinations.ai', model?: string): Provider {
+export function pollinationsProvider(baseUrl = 'https://image.pollinations.ai', model?: string, variant = 0): Provider {
   return {
     name: `pollinations${model ? `:${model}` : ''}`,
     async generate(job) {
       const [width, height] = job.size.split('x');
-      const seed = [...job.id].reduce((h, ch) => (h * 31 + ch.charCodeAt(0)) >>> 0, 7) % 1_000_000;
+      const seed = ([...job.id].reduce((h, ch) => (h * 31 + ch.charCodeAt(0)) >>> 0, 7) + variant * 7919) % 1_000_000;
       const query = new URLSearchParams({ width, height, seed: String(seed), nologo: 'true', ...(model ? { model } : {}) });
       const image = await download(`${baseUrl}/prompt/${encodeURIComponent(job.prompt)}?${query}`);
       return removeWatermark(image, job);
@@ -193,12 +193,15 @@ export async function sharpOptimizer(opts: { clearWatermark?: boolean } = {}): P
       const cornerAlpha = data[3];
       const ai = cornerAlpha < 250 ? null : await aiCutout(image);
       if (ai) {
-        input = sharp(ai).trim();
+        const { data: d, info: i } = await sharp(ai).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+        const clean = removeIslands({ data: d, width: i.width, height: i.height, channels: 4 });
+        input = sharp(Buffer.from(clean.data), { raw: { width: i.width, height: i.height, channels: 4 } }).trim();
       } else {
         const cut = cornerAlpha < 250
           ? { data, width: info.width, height: info.height, channels: 4 } // ya trae transparencia
           : cutoutBackground({ data, width: info.width, height: info.height, channels: 4 },
             opts.clearWatermark ? { clear: { x: 0.62, y: 0.9, w: 0.38, h: 0.1 } } : {});
+        removeIslands(cut);
         input = sharp(Buffer.from(cut.data), { raw: { width: cut.width, height: cut.height, channels: 4 } }).trim();
       }
     }
@@ -259,7 +262,7 @@ async function main(): Promise<void> {
     if (!process.env.REPLICATE_API_TOKEN) throw new Error('Falta REPLICATE_API_TOKEN (o usa OPENAI_API_KEY).');
     provider = replicateProvider(process.env.REPLICATE_API_TOKEN, process.env.REPLICATE_BASE_URL, process.env.REPLICATE_MODEL);
   } else if (which === 'pollinations') {
-    provider = pollinationsProvider(process.env.POLLINATIONS_BASE_URL, process.env.POLLINATIONS_MODEL);
+    provider = pollinationsProvider(process.env.POLLINATIONS_BASE_URL, process.env.POLLINATIONS_MODEL, Number(value('variant') ?? 0));
     // Servicio gratuito: de una en una para no saturarlo.
     console.log('Usando Pollinations (gratis). Para más calidad: OPENAI_API_KEY o REPLICATE_API_TOKEN.');
   } else {

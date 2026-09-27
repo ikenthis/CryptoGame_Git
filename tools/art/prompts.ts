@@ -36,7 +36,7 @@ const SPRITE_RACE: Record<Race, string> = {
   human: 'human, blue and gold plate armor, sun emblem',
   elf: 'elf with pointed ears and long silver hair, silver and emerald leaf armor',
   orc: 'green-skinned orc with tusks, black spiked iron armor, red war paint',
-  undead: 'undead skeleton, glowing cyan eyes, purple tattered cloth, spiked crown',
+  undead: 'skeleton with a bare white skull face and bony hands, glowing cyan eye sockets, rusted dark armor, tattered purple cloth',
   dwarf: 'stocky dwarf with a huge braided red beard, bronze rune armor',
 };
 
